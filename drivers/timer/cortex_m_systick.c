@@ -21,6 +21,9 @@ void _ExcExit(void);
 #define MAX_TICKS ((COUNTER_MAX / CYC_PER_TICK) - 1)
 #define MAX_CYCLES (MAX_TICKS * CYC_PER_TICK)
 
+#define TICKLESS (IS_ENABLED(CONFIG_TICKLESS_KERNEL) &&			\
+		  !IS_ENABLED(CONFIG_QEMU_TICKLESS_WORKAROUND))
+
 static struct k_spinlock lock;
 
 static u32_t last_load;
@@ -60,7 +63,7 @@ void _timer_int_handler(void *arg)
 
 	k_spin_unlock(&lock, key);
 
-	z_clock_announce(IS_ENABLED(CONFIG_TICKLESS_KERNEL) ? dticks : 1);
+	z_clock_announce(TICKLESS ? dticks : 1);
 	_ExcExit();
 }
 
@@ -71,8 +74,7 @@ int z_clock_driver_init(struct device *device)
 			  SysTick_CTRL_TICKINT_Msk |
 			  SysTick_CTRL_CLKSOURCE_Msk);
 
-	last_load = IS_ENABLED(CONFIG_TICKLESS_KERNEL) ?
-		MAX_CYCLES : CYC_PER_TICK;
+	last_load = CYC_PER_TICK;
 	SysTick->LOAD = last_load;
 	SysTick->VAL = 0; /* resets timer to last_load */
 	return 0;
@@ -92,7 +94,7 @@ void z_clock_set_timeout(s32_t ticks, bool idle)
 		return;
 	}
 
-#ifdef CONFIG_TICKLESS_KERNEL
+#if defined(CONFIG_TICKLESS_KERNEL) && !defined(CONFIG_QEMU_TICKLESS_WORKAROUND)
 	u32_t delay;
 
 	ticks = min(MAX_TICKS, max(ticks - 1, 0));
@@ -118,7 +120,7 @@ void z_clock_set_timeout(s32_t ticks, bool idle)
 
 u32_t z_clock_elapsed(void)
 {
-	if (!IS_ENABLED(CONFIG_TICKLESS_KERNEL)) {
+	if (!TICKLESS) {
 		return 0;
 	}
 
