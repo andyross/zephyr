@@ -35,3 +35,11 @@ int __weak z_clock_device_ctrl(struct device *device,
 void __weak z_clock_set_timeout(s32_t ticks, bool idle)
 {
 }
+
+void __weak z_clock_idle_exit(void)
+{
+}
+
+void __weak sys_clock_disable(void)
+{
+}
