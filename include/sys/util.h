@@ -66,6 +66,13 @@ extern "C" {
 /** @brief 0 if @p cond is true-ish; causes a compile error otherwise. */
 #define ZERO_OR_COMPILE_ERROR(cond) ((int) sizeof(char[1 - 2 * !(cond)]) - 1)
 
+/* Temp - The SOF module also defines IS_ENABLED and this is to avoid
+ * collisions until it can be reolved as part of SOF port.
+ */
+#ifdef ARRAY_SIZE
+#undef ARRAY_SIZE
+#endif
+
 #if defined(__cplusplus)
 
 /* The built-in function used below for type checking in C is not
@@ -329,6 +336,13 @@ uint8_t u8_to_dec(char *buf, uint8_t buflen, uint8_t value);
  * or 0 if @p n is 0.
  */
 #define BIT_MASK(n) (BIT(n) - 1)
+
+/* Temp - The SOF module also defines IS_ENABLED and this is to avoid
+ * collisions until it can be reolved as part of SOF port.
+ */
+#ifdef IS_ENABLED
+#undef IS_ENABLED
+#endif
 
 /**
  * @brief Check for macro definition in compiler-visible expressions
