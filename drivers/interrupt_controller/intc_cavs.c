@@ -61,7 +61,7 @@ static void cavs_ictl_isr(const struct device *port)
 				      config->isr_table_offset);
 }
 
-static inline void cavs_ictl_irq_enable(const struct device *dev,
+static void cavs_ictl_irq_enable(const struct device *dev,
 					unsigned int irq)
 {
 	struct cavs_ictl_runtime *context = dev->data;
@@ -69,10 +69,10 @@ static inline void cavs_ictl_irq_enable(const struct device *dev,
 	volatile struct cavs_registers * const regs =
 			(struct cavs_registers *)context->base_addr;
 
-	regs->enable_il = (1 << irq);
+	regs->enable_il = 1 << irq;
 }
 
-static inline void cavs_ictl_irq_disable(const struct device *dev,
+static void cavs_ictl_irq_disable(const struct device *dev,
 					 unsigned int irq)
 {
 	struct cavs_ictl_runtime *context = dev->data;
@@ -80,10 +80,10 @@ static inline void cavs_ictl_irq_disable(const struct device *dev,
 	volatile struct cavs_registers * const regs =
 			(struct cavs_registers *)context->base_addr;
 
-	regs->disable_il = (1 << irq);
+	regs->disable_il = 1 << irq;
 }
 
-static inline unsigned int cavs_ictl_irq_get_state(const struct device *dev)
+static unsigned int cavs_ictl_irq_get_state(const struct device *dev)
 {
 	struct cavs_ictl_runtime *context = dev->data;
 
@@ -94,11 +94,7 @@ static inline unsigned int cavs_ictl_irq_get_state(const struct device *dev)
 	 * corresponding interrupts are disabled. This function
 	 * returns 0 only if ALL the interrupts are disabled.
 	 */
-	if (regs->disable_state_il == 0xFFFFFFFF) {
-		return 0;
-	}
-
-	return 1;
+	return regs->disable_state_il != 0xFFFFFFFF;
 }
 
 static int cavs_ictl_irq_get_line_state(const struct device *dev,
