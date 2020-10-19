@@ -43,6 +43,10 @@ static const struct adsp_ipc_fw_ready fw_ready_apl
 	.flags = 0,
 };
 
+/* FIXME: this collides with SOF initialization, disabled for now, but
+ * we need a way to select this behavior either here or in SOF
+ */
+#if !defined(CONFIG_SOF)
 #define NUM_WINDOWS			2
 
 static const struct adsp_ipc_window sram_window = {
@@ -134,3 +138,4 @@ static int adsp_init(const struct device *dev)
 
 /* Init after IPM initialization and before logging (uses memory windows) */
 SYS_INIT(adsp_init, PRE_KERNEL_2, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+#endif /* ! CONFIG_SOF */
