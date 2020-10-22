@@ -5029,4 +5029,9 @@ __syscall int k_float_disable(struct k_thread *thread);
 
 #endif /* !_ASMLANGUAGE */
 
+/* TERRIBLE HACK.  Use this to evade an error in upstream SOF until
+ * https://github.com/thesofproject/sof/pull/3544 merges
+ */
+#define CONFIG_SYS_HEAP_ALIGNED_ALLOC 1
+
 #endif /* ZEPHYR_INCLUDE_KERNEL_H_ */
