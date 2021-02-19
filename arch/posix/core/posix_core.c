@@ -507,16 +507,11 @@ void z_impl_k_thread_abort(k_tid_t thread)
 			thread_idx,
 			__func__);
 
-		if (arch_is_in_isr()) {
-			z_thread_single_abort(thread);
-			return;
-		}
-
-		z_self_abort();
-		CODE_UNREACHABLE; /* LCOV_EXCL_LINE */
+		z_thread_abort(_current);
+		return;
 	}
 
-	z_thread_single_abort(thread);
+	z_thread_abort(thread);
 
 	if (tstatus->aborted == 0) {
 		PC_DEBUG("%s aborting now [%i] %i\n",
