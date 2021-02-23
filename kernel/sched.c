@@ -1529,7 +1529,6 @@ void z_impl_k_thread_abort(struct k_thread *thread)
 {
 	z_thread_abort(thread);
 }
-#else
 #endif
 
 int z_impl_k_thread_join(struct k_thread *thread, k_timeout_t timeout)
