@@ -506,9 +506,6 @@ void z_impl_k_thread_abort(k_tid_t thread)
 			threads_table[thread_idx].thead_cnt,
 			thread_idx,
 			__func__);
-
-		z_thread_abort(_current);
-		return;
 	}
 
 	z_thread_abort(thread);
