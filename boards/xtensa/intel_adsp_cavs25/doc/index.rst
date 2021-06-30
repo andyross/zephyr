@@ -192,11 +192,19 @@ know how to start themselves.
 Building and Installing a Custom Kernel
 ***************************************
 
+Google's upstream kernel doesn't quite work with the Zephyr userspace
+loader.  Beyond being intentionally locked down to prevent dynamically
+loading modified modules, it also enables the hardware IO-MMU (which
+breaks device DMA done through side channels like ours) and lacks
+support for hugetlbfs from which our loader allocates large contiguous
+regions of memory.
+
 On your build host, grab a copy of the ChromeOS kernel tree.  The
 shipping device is using a 5.4 kernel, but the 5.10 tree works for me
-and seems to have been backporting upstream drivers such that its main
-hardware is all quite recent (5-6 weeks behind mainline or so).  We
-place it in the home directory here for simplicity:
+(I am currently testing on commit aa51d4bd52af) and seems to have been
+backporting upstream drivers such that its main hardware is all quite
+recent (5-6 weeks behind mainline or so).  We place it in the home
+directory here for simplicity:
 
 .. code-block:: console
 
@@ -229,14 +237,18 @@ You will need to set some custom configuration variables differently
 from ChromeOS defaults (you can edit .config directly, or use
 menuconfig, etc...):
 
-+ ``CONFIG_HUGETLBFS=y`` - The Zephyr loader tool requires this
++ ``CONFIG_INTEL_IOMMU=n`` - Google enables this for security reasons,
+  but it breaks attempts at directing device DMA to process-mapped
+  memory.  It must be disabled.
++ ``CONFIG_HUGETLBFS=y`` - The Zephyr loader tool requires this to
+  allocate its DMA buffer
 + ``CONFIG_EXTRA_FIRMWARE_DIR=n`` - This refers to a build directory
-    in Google's build environment that we will not have.
+  in Google's build environment that we will not have.
 + ``CONFIG_SECURITY_LOADPIN=n`` - Pins modules such that they will
-    only load from one filesystem.  Annoying restriction for custom
-    kernels.
+  only load from one filesystem.  Annoying restriction for custom
+  kernels.
 + ``CONFIG_MODVERSIONS=n`` - Allow modules to be built and installed
-    from modified "dirty" build trees.
+  from modified "dirty" build trees.
 
 Now build your kernel just as you would any other:
 
@@ -244,6 +256,9 @@ Now build your kernel just as you would any other:
 
     dev$ make olddefconfig     # Or otherwise update .config
     dev$ make bzImage modules  # Probably want -j<whatever> for parallel build
+
+Install Kernel Modules on Chromebook
+====================================
 
 The modules you can copy directly to the (now writable) rootfs on the
 device.  Note that this filesystem has very limited space (it's
@@ -274,11 +289,11 @@ bootloader) with the partition table of the boot drive, for example:
 
 .. code-block:: console
 
-    dev$ KPART=`ssh root@cros 'fdisk -l -o UUID,Device /dev/nvme0n1 | \
-                               grep -i $(sed "s/.*kern_guid=//" /proc/cmdline \
-                                         | sed "s/ .*//") \
-                               | sed "s/.* //"'`
-    dev$ echo $KPART
+    cros$ KPART=`fdisk -l -o UUID,Device /dev/nvme0n1 \
+                     | grep -i $(sed "s/.*kern_guid=//" /proc/cmdline \
+                                 | sed "s/ .*//") \
+                     | sed "s/.* //"'`
+    cros$ echo $KPART
     /dev/nvme0n1p4
 
 Extract the command line from that image into a local file:
@@ -309,8 +324,8 @@ Now just copy up the file and write it to the partition on the device:
 
 .. code-block:: console
 
-    $ scp kernel.img root@cros:/tmp
-    $ ssh root@cros dd if=/tmp/kernel.img of=/dev/nvme0n1p4
+    dev$ scp kernel.img root@cros:/tmp
+    dev$ ssh root@cros dd if=/tmp/kernel.img of=/dev/nvme0n1p4
 
 Now reboot, and if all goes well you will find yourself running in
 your new kernel.
