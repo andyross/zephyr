@@ -25,7 +25,7 @@ static void prepare_host_windows(void)
 {
 	/* window0, for fw status */
 	sys_write32((HP_SRAM_WIN0_SIZE | 0x7), DMWLO(0));
-	sys_write32((HP_SRAM_WIN0_BASE | DMWBA_READONLY | DMWBA_ENABLE),
+	sys_write32((HP_SRAM_WIN0_BASE | DMWBA_ENABLE),
 		    DMWBA(0));
 	memset((void *)(HP_SRAM_WIN0_BASE + SRAM_REG_FW_END), 0,
 	      HP_SRAM_WIN0_SIZE - SRAM_REG_FW_END);
