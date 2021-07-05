@@ -120,6 +120,7 @@ void z_mp_entry(void)
 {
 	volatile int ie;
 	uint32_t idc_reg;
+	printk("MP ENTRY!\n");
 
 	/* We don't know what the boot ROM might have touched and we
 	 * don't care.  Make sure it's not in our local cache to be
@@ -181,11 +182,128 @@ bool arch_cpu_active(int cpu_num)
 	return !!(cpu_mask & BIT(cpu_num));
 }
 
+static bool soc_mp_initialized = 0;
+
+/* Most confusing register interface ever (seriously: why can't we
+ * have a one-way "signal this interrupt on this cpu" register like
+ * everyone else?).  (I)ntra (D)SP (C)ommunication is implemented as
+ * an array of 128-byte records for use by each core (i.e. so CPU0
+ * uses the first set, but has visibility to all).  Each has a set of
+ * registers for communication with each other core in the system
+ * (including the current core), so 16 sets.  Each set has a register
+ * that "initiates" the interrupt with some data from the current core
+ * (the outer/bigger index) and those values get shadowed in the
+ * "target" registers for the destination core.
+ *
+ * Note that there is an "extension" register/shadow pair that works
+ * the same way except it (1) doesn't trigger an interrupt when
+ * written and (2) only has 30 useable bits.  It is in all other ways
+ * just scratch storage, the hardware doesn't inspect it.
+ *
+ * Also note that the top two bits of the extension word are reserved
+ * and get dropped on write, that the top bit of the ITC register
+ * *MUST* be set for the message to send, and that the same bit must
+ * then be cleared by the target in the corresponding TFC register
+ * before another message will work.  (Also that the clearing of the
+ * bit at the destination can itself be an interrupt source for the
+ * sender, which is cute but weird).
+ *
+ * So you can send a synchronous message from core "src" (where src is
+ * the PRID of the CPU, equal to arch_curr_cpu() in Zephyr) to core
+ * "dst" with:
+ *
+ *     idc[src].core[dst].ietc = BIT(31) | extra_30_bits; // optional
+ *     idc[src].core[dst].itc = BIT(31) | message;
+ *     while (idc[src].core[dst].itc & BIT(31)) {}
+ *
+ * And the other side (on cpu "dst", generally in the IDC interrupt
+ * handler) will read those same values via:
+ *
+ *     uint32_t my_msg = idc[dst].core[src].tfc & 0x7fffffff;
+ *     uint32_t my_ext = idc[dst].core[src].tefc & 0x3fffffff;
+ *     idc[dst].core[src].tfc = 0; // clear high bit to signal completion
+ */
+struct cavs_idc {
+	struct {
+		uint32_t tfc;  /* (T)arget (F)rom (C)ore  */
+		uint32_t tefc; /*  ^^ + (E)xtension       */
+		uint32_t itc;  /* (I)nitiator (T)o (C)ore */
+		uint32_t ietc; /*  ^^ + (E)xtension       */
+	} core[5];
+	uint32_t ctl;          /* control flags */
+	uint32_t unused1[11];
+};
+static volatile struct cavs_idc *idcregs = (void *)0x1200;
+
+struct cavs_intctrl {
+	struct {
+		uint32_t set, clear, mask, status;
+	} l2, l3, l4, l5;
+};
+static volatile struct cavs_intctrl *intctrl = (void *)0x78800;
+
+static void soc_mp_initialize(void)
+{
+	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
+	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
+
+	soc_mp_initialized = 1;
+
+#ifdef CONFIG_IPM_CAVS_IDC
+	// FIXME: remove
+	idc = device_get_binding(DT_LABEL(DT_INST(0, intel_cavs_idc)));
+#endif
+
+	printk("Enabling IDC interrupts to all cores:\n");
+	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
+		printk("  idcregs[%d].ctl : 0x%x -> ", c, idcregs[c].ctl);
+		idcregs[c].ctl = 0xff;
+		printk("0x%x\n", idcregs[c].ctl);
+	}
+
+	printk("Unmasking L2 interrupts on all cores\n");
+	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
+		// FIXME: clear just the bit we need
+		intctrl[c].l2.clear = 0xffffffff;
+	}
+
+	printk("PWRCTL = 0x%x PWRSTS = 0x%x LPSCTL = 0x%x CLKCTL = 0x%x CLKSTS = 0x%x\n",
+	       shim->pwrctl, shim->pwrsts, shim->lpsctl, shim->clkctl, shim->clksts);
+
+	printk("Set LPSCTL.FDSPRUN\n");
+	shim->lpsctl = BIT(9);
+
+	printk("Disable idle clock gating on all cores\n");
+	shim->clkctl |= BIT(29); // DEFAULT_RO/RLROSCC
+	while ((shim->clksts & BIT(29)) == 0);
+
+	shim->clkctl |= (0xff << 16); // Disable clock gating for all cores
+	shim->clkctl |= BIT(2); // Oscillator CLock Select == HP ring oscillator
+	shim->clkctl |= BIT(1); // LMCS == div/4
+
+	/* FIXME: Try turning it off here, then on on start */
+	printk("ENabling idle power gating on all cores\n");
+	shim->pwrctl &= ~(0xf | BIT(4) | BIT(6));
+
+	printk("PWRCTL = 0x%x PWRSTS = 0x%x LPSCTL = 0x%x CLKCTL = 0x%x CLKSTS = 0x%x\n",
+	       shim->pwrctl, shim->pwrsts, shim->lpsctl, shim->clkctl, shim->clksts);
+
+	k_busy_wait(500000);
+
+	printk("Flagging Zephyr alive to host\n");
+	swregs[3] = 0x12345600;
+}
+
 void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 		    arch_cpustart_t fn, void *arg)
 {
+	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
+	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
 	uint32_t vecbase;
-	uint32_t idc_reg;
+
+	if (!soc_mp_initialized) {
+		soc_mp_initialize();
+	}
 
 	__ASSERT(cpu_num == 1, "Only supports only two CPUs!");
 
@@ -200,19 +318,40 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	z_mp_stack_top = Z_THREAD_STACK_BUFFER(stack) + sz;
 
-#ifdef CONFIG_IPM_CAVS_IDC
-	idc = device_get_binding(DT_LABEL(DT_INST(0, intel_cavs_idc)));
-#endif
+	printk("Waiting on host to flag CPU ready...\n");
+	while ((swregs[3] & BIT(cpu_num)) == 0);
+	k_busy_wait(50000);
 
+	printk("Host says core %d is ready (ZSTAT 0x%x)...\n", cpu_num, swregs[3]);
+
+	k_busy_wait(1000);
+	printk("Disabling idle power gating on all cores\n");
+	shim->pwrctl = 0xf | BIT(4) | BIT(6);
+
+	printk("Setting up IDC interrupt\n");
+	idcregs[0].core[cpu_num].ietc = ((long) z_soc_mp_asm_entry) >> 2;
+	idcregs[0].core[cpu_num].itc = 0x01000002;
+	printk("idcregs[%d].core[0].tfc = 0x%x\n", cpu_num, idcregs[cpu_num].core[0].tfc);
+	printk("idcregs[%d].core[0].tefc = 0x%x\n", cpu_num, idcregs[cpu_num].core[0].tefc);
+
+	printk("Triggering IDC interrupt @ %p\n", &idcregs[0].core[cpu_num].itc);
+	idcregs[0].core[cpu_num].itc |= BIT(31); /* trigger interrupt */
+
+	while(idcregs[cpu_num].core[0].tfc & BIT(31));
+
+#if 0
 	/* Enable IDC interrupt on the other core */
+	printk("Enable interrupt in IDCCTL\n");
 	idc_reg = idc_read(IPC_IDCCTL, cpu_num);
 	idc_reg |= IPC_IDCCTL_IDCTBIE(0);
 	idc_write(IPC_IDCCTL, cpu_num, idc_reg);
 	/* FIXME: 8 is IRQ_BIT_LVL2_IDC / PLATFORM_IDC_INTERRUPT */
+	printk("Enable L2 interrupt mask on other CPU\n");
 	sys_set_bit(DT_REG_ADDR(DT_NODELABEL(cavs0)) + 0x04 +
 		    CAVS_ICTL_INT_CPU_OFFSET(cpu_num), 8);
 
 	/* Send power up message to the other core */
+	printk("Send IDC to CPU\n");
 	uint32_t ietc = IDC_MSG_POWER_UP_EXT((long) z_soc_mp_asm_entry);
 
 	idc_write(IPC_IDCIETC(cpu_num), 0, ietc);
@@ -221,6 +360,7 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	/* Disable IDC interrupt on other core so IPI won't cause
 	 * them to jump to ISR until the core is fully initialized.
 	 */
+	printk("Disable other side interrupt for now\n");
 	idc_reg = idc_read(IPC_IDCCTL, cpu_num);
 	idc_reg &= ~IPC_IDCCTL_IDCTBIE(0);
 	idc_write(IPC_IDCCTL, cpu_num, idc_reg);
@@ -230,13 +370,18 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	k_busy_wait(100);
 
 #ifdef CONFIG_SMP_BOOT_DELAY
+	printk("cavs_idc_smp_init()\n");
 	cavs_idc_smp_init(NULL);
 #endif
 
 	/* Clear done bit from responding the power up message */
+	printk("Clear DONE bit reading\n");
 	idc_reg = idc_read(IPC_IDCIETC(cpu_num), 0) | IPC_IDCIETC_DONE;
+	printk("Clear DONE bit writing\n");
 	idc_write(IPC_IDCIETC(cpu_num), 0, idc_reg);
+#endif
 
+	printk("IDC sent, spinning...\n");
 	while (!start_rec.alive)
 		;
 

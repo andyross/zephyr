@@ -155,6 +155,9 @@ def main():
         log.info(f"Awaiting ROM init... FW_STATUS = 0x{dsp.SRAM_FW_STATUS:x}")
         while (dsp.SRAM_FW_STATUS & 0x00ffffff) != 1: pass
 
+    log.info("Powering off all but first core...")
+    dsp.ADSPCS = 0x010e0e
+
     # It's ready, uncork the stream
     log.info(f"Starting DMA, FW_STATUS = 0x{dsp.SRAM_FW_STATUS:x}")
     sd.CTL |= HDA_SD_CTL__START
@@ -179,16 +182,30 @@ def main():
     # Turn DMA off and reset the stream.  If this doesn't happen the
     # hardware continues streaming out of our now-stale page and has
     # been observed to glitch the next boot.
+    log.info("reseting stream...")
     sd.CTL = 1
 
-    # Finally bang the CPU power bits again, there seems to be a race
-    # somewhere where sometimes the second CPU comes up as per the
-    # instructions in ADSPCS and sometimes it doesn't.  Doing it again
-    # now seems to make it reliable.
-    time.sleep(0.1)
+    log.info("Waiting for DSP to reach SMP init...")
+    while dsp.ZSTAT != 0x12345600: pass
+
+    time.sleep(0.1);
+
+    log.info("Powering up other cores...")
     dsp.ADSPCS = 0xff0000
-    time.sleep(0.1)
-    log.info(f"Load complete, {ncores(dsp)} cores active")
+    coremsk = (dsp.ADSPCS >> 16) & 0xff
+    while (dsp.ADSPCS >> 24) & coremsk != coremsk: pass
+    log.info("***")
+    log.info("***")
+    log.info(f"*** Powered up {ncores(dsp)} cores, ADSPCS = 0x{dsp.ADSPCS:x}")
+    log.info("***")
+    log.info("***")
+
+    time.sleep(0.1);
+
+    log.info("Informing DSP cores are ready...")
+    dsp.ZSTAT = 0xff
+
+    log.info("OK?")
 
 # Count of active/running cores
 def ncores(dsp):
@@ -258,6 +275,8 @@ def map_regs():
         dsp.HIPCI      = 0x000d0 # ...now named "HIPCR" per 1.8+ docs
         dsp.HIPCA      = 0x000d4
     dsp.SRAM_FW_STATUS = 0x80000 # Start of first SRAM window
+    dsp.ZSTAT = 0x8000c # DEBUG
+    dsp.ZSTAT2 = 0x80010 # DEBUG
     dsp.freeze()
 
     return (hda, sd, dsp)
