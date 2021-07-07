@@ -52,6 +52,8 @@ LOG_MODULE_REGISTER(soc_mp, CONFIG_SOC_LOG_LEVEL);
 
 #define IDC_MSG_POWER_UP_EXT(x)	IDC_EXTENSION((x) >> 2)
 
+const int CPUMASK = (1 << (CONFIG_MP_NUM_CPUS)) - 1;
+
 #ifdef CONFIG_IPM_CAVS_IDC
 static const struct device *idc;
 #endif
@@ -263,23 +265,21 @@ static void soc_mp_initialize(void)
 
 	/* Enable IDC interrupts to be directed to/from any combination of cores */
 	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-		idcregs[c].ctl = 0xff;
+		idcregs[c].ctl = CPUMASK;
 	}
 
 	/* Unmask our L2 IDC interrupt on all cores */
 	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-		// FIXME: clear just the bit we need
-		intctrl[c].l2.clear = IDC_BIT; //0xffffffff;
+		intctrl[c].l2.clear = IDC_BIT;
 	}
 
-	// FIXME: this is LPSCTL.FDSPRUN, seemed useful to try but
-	// seems not to do anything, and SOF does it only in what seems
-	// to be vestigial/unreachable code (the case where you try to
-	// start cpu0 from another core).
-	//
-	//shim->lpsctl = BIT(9);
-
-	const int CPUMASK = (1 << (CONFIG_MP_NUM_CPUS)) - 1;
+	/* Turn off BID and BATTR[0] bits in LPSCTL and set FSDPRUN
+	 * ("force DSP running").  SOF has code to do this, but only
+	 * on a code path that I don't think can ever be hit (enabling
+	 * cpu0 from another CPU).  Seems to be a noop.
+	 */
+	shim->lpsctl = ((shim->lpsctl & ~(BIT(7) | BIT(12)))
+			| BIT(9));
 
 	/* This has to have bottom bits set for any CPUs we want the
 	 * host to be able to bring up later.  If power gating isn't
@@ -292,14 +292,13 @@ static void soc_mp_initialize(void)
 	/* CLKCTL must enable and poll for the initialization of the
 	 * oscillator before touching other bits
 	 */
-	shim->clkctl |= BIT(29); // DEFAULT_RO/RLROSCC
-	while ((shim->clksts & BIT(29)) == 0);
-
-	printk("PWRSTS = 0x%x @%d\n", shim->pwrsts, __LINE__);
+	shim->clkctl |= BIT(29); /* Request LP Ring Oscillator */
+	while ((shim->clksts & BIT(29)) == 0) {
+	}
 
 	shim->clkctl |= ((CPUMASK << 16) // Disable clock gating for all cores
-			 | BIT(2)     // Oscillator CLock Select == HP ring oscillator
-			 | BIT(1));   // LMCS == div/4
+			 | BIT(2)        // Oscillator CLock Select == HP ring oscillator
+			 | BIT(1));      // LMCS == div/4
 
 	/* OK, this is weird.  It's actually the write to CLKCTL that
 	 * seems to uncork the CPUs.  After that, they come up in
