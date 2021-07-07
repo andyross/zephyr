@@ -288,15 +288,8 @@ static void soc_mp_initialize(void)
 
 	soc_mp_initialized = 1;
 
-	/* Enable IDC interrupts to be directed to/from any combination of cores */
-	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-		idcregs[c].ctl = CPUMASK;
-	}
-
-	/* Unmask our L2 IDC interrupt on all cores */
-	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-		intctrl[c].l2.clear = IDC_BIT;
-	}
+	/* Unmask our own IDC interrupt */
+	intctrl[0].l2.clear = IDC_BIT;
 
 	/* Turn off BID and BATTR[0] bits in LPSCTL and set FSDPRUN
 	 * ("force DSP running").  SOF has code to do this, but only
@@ -326,11 +319,11 @@ static void cpu_launch(int cpu_num)
 	while ((shim->pwrsts & BIT(cpu_num)) == 0) {
 	}
 
-	idcregs[0].ctl = BIT(cpu_num);
-	idcregs[cpu_num].ctl = BIT(0);
+	idcregs[0].ctl = BIT(cpu_num); /* so we can signal the CPU */
+	idcregs[cpu_num].ctl = BIT(0); /* so it can signal us later */
 
-	intctrl[0].l2.clear = 0xffffffff;
-	intctrl[cpu_num].l2.clear = 0xffffffff;
+	intctrl[cpu_num].l2.clear = IDC_BIT;
+
 }
 
 void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
