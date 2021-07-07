@@ -64,6 +64,10 @@ def main():
     log.info("Enable HDA global processing")
     hda.PPCTL |= HDA_PPCTL__GPROCEN
 
+    log.info(f"Clear D0i3 restore bit (dsp.PCE_D0I3C_LTRC 0x{dsp.PCE_D0I3C_LTRC:x})")
+    dsp.PCE_D0I3C_LTRC = 0x80000
+    log.info(f"   => 0x{dsp.PCE_D0I3C_LTRC:x}")
+    
     # Turn off the DSP CPUs (each byte of ADSPCS is a bitmask for each
     # of 1-8 DSP cores: lowest byte controls "stall", the second byte
     # engages "reset", the third controls power, and the highest byte
@@ -79,8 +83,10 @@ def main():
     (buf_list_addr, num_bufs) = setup_dma_mem(fw_bytes)
 
     # Reset stream
+    log.info("Reset HDA (CTL = 1)")
     sd.CTL = 1
     while (sd.CTL & 1) == 0: pass
+    log.info("Reset HDA (CTL = 0)")
     sd.CTL = 0
     while (sd.CTL & 1) == 1: pass
 
@@ -104,7 +110,7 @@ def main():
     # Power up all the cores on the DSP and wait for CPU0 to show that
     # it has power.  Leave stall and reset high for now
     log.info(f"Powering up DSP cores, ADSPCS = 0x{dsp.ADSPCS:x}")
-    dsp.ADSPCS = 0xffffff
+    dsp.ADSPCS = 0x1ffff
     while (dsp.ADSPCS & 0x01000000) == 0: pass
     log.info(f"Powered up {ncores(dsp)} cores, ADSPCS = 0x{dsp.ADSPCS:x}")
 
@@ -127,7 +133,7 @@ def main():
 
     # Now start the CPUs by dropping stall and reset
     log.info(f"Starting {ncores(dsp)} cores, ADSPCS = 0x{dsp.ADSPCS:x}")
-    dsp.ADSPCS = 0xff0000
+    dsp.ADSPCS = 0x10000
 
     # Experimentation shows that these steps aren't actually required,
     # the ROM just charges ahead and initializes itself correctly even
@@ -155,8 +161,8 @@ def main():
         log.info(f"Awaiting ROM init... FW_STATUS = 0x{dsp.SRAM_FW_STATUS:x}")
         while (dsp.SRAM_FW_STATUS & 0x00ffffff) != 1: pass
 
-    log.info("Powering off all but first core...")
-    dsp.ADSPCS = 0x010e0e
+    #log.info("Powering off all but first core...")
+    #dsp.ADSPCS = 0x010e0e
 
     # It's ready, uncork the stream
     log.info(f"Starting DMA, FW_STATUS = 0x{dsp.SRAM_FW_STATUS:x}")
@@ -187,23 +193,28 @@ def main():
 
     log.info("Waiting for DSP to reach SMP init...")
     while dsp.ZSTAT != 0x12345600: pass
+    log.info("DSP up and ready\n");
 
-    time.sleep(0.1);
+    time.sleep(2);
 
-    log.info("Powering up other cores...")
+    # FIXME: THEORY: Now the other cores are set up with PWRCTL that
+    # will idle.  We need to get them into idle.  Pulse them up, let
+    # them reach WAITI and then shut them back down back down.
+    log.info("ANDY: bouncing other cores up/down to engage power gating")
     dsp.ADSPCS = 0xff0000
+    time.sleep(0.1)
+    dsp.ADSPCS = 0x10000
+    time.sleep(0.1)
+
+    # Do this super-fast, so the DSP main CPU gets
+    # as-synchronous-as-possible notification of the second CPU
+    # powering up.
+    log.info("Powering up other cores... (do it fast!)")
+    dsp.ADSPCS = 0xfffefe
     coremsk = (dsp.ADSPCS >> 16) & 0xff
     while (dsp.ADSPCS >> 24) & coremsk != coremsk: pass
-    log.info("***")
-    log.info("***")
-    log.info(f"*** Powered up {ncores(dsp)} cores, ADSPCS = 0x{dsp.ADSPCS:x}")
-    log.info("***")
-    log.info("***")
-
-    time.sleep(0.1);
-
-    log.info("Informing DSP cores are ready...")
-    dsp.ZSTAT = 0xff
+    dsp.ADSPCS = 0xff0000
+    dsp.ZSTAT = coremsk
 
     log.info("OK?")
 
@@ -274,6 +285,7 @@ def map_regs():
     else:
         dsp.HIPCI      = 0x000d0 # ...now named "HIPCR" per 1.8+ docs
         dsp.HIPCA      = 0x000d4
+        dsp.PCE_D0I3C_LTRC = 0x01048 # (actually three 1-byte registers)
     dsp.SRAM_FW_STATUS = 0x80000 # Start of first SRAM window
     dsp.ZSTAT = 0x8000c # DEBUG
     dsp.ZSTAT2 = 0x80010 # DEBUG

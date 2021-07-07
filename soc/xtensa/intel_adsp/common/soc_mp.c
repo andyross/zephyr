@@ -201,12 +201,12 @@ static bool soc_mp_initialized = 0;
  * just scratch storage, the hardware doesn't inspect it.
  *
  * Also note that the top two bits of the extension word are reserved
- * and get dropped on write, that the top bit of the ITC register
- * *MUST* be set for the message to send, and that the same bit must
- * then be cleared by the target in the corresponding TFC register
- * before another message will work.  (Also that the clearing of the
- * bit at the destination can itself be an interrupt source for the
- * sender, which is cute but weird).
+ * and get dropped on write, that the top bit of the ITC register acts
+ * as the interrupt latch.  It *MUST* be set for the message to send,
+ * and that the same bit must then be cleared by the target in the
+ * corresponding TFC register before another message will work.  (Also
+ * that the clearing of the bit at the destination can itself be an
+ * interrupt source for the sender, which is cute but weird).
  *
  * So you can send a synchronous message from core "src" (where src is
  * the PRID of the CPU, equal to arch_curr_cpu() in Zephyr) to core
@@ -235,6 +235,18 @@ struct cavs_idc {
 };
 static volatile struct cavs_idc *idcregs = (void *)0x1200;
 
+#define IDC_BIT 0x100
+
+/* cAVS interrupt mask bits.  Each core has one of these structs
+ * indexed in the intctrl[] array.  Each external interrupt source
+ * indexes one bit in one of the state structs (one each for Xtensa
+ * level 2-5 interrupts).  Write to "set" to set the mask bit to 1 and
+ * disable interrupts.  Write a 1 bit to "clear" to force the mask bit
+ * to 0 and enable them.
+ *
+ * See cAVS register documentation for the specific interrupt
+ * mappings.
+ */
 struct cavs_intctrl {
 	struct {
 		uint32_t set, clear, mask, status;
@@ -249,49 +261,72 @@ static void soc_mp_initialize(void)
 
 	soc_mp_initialized = 1;
 
-#ifdef CONFIG_IPM_CAVS_IDC
-	// FIXME: remove
-	idc = device_get_binding(DT_LABEL(DT_INST(0, intel_cavs_idc)));
-#endif
-
-	printk("Enabling IDC interrupts to all cores:\n");
+	/* Enable IDC interrupts to be directed to/from any combination of cores */
 	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-		printk("  idcregs[%d].ctl : 0x%x -> ", c, idcregs[c].ctl);
 		idcregs[c].ctl = 0xff;
-		printk("0x%x\n", idcregs[c].ctl);
 	}
 
-	printk("Unmasking L2 interrupts on all cores\n");
+	/* Unmask our L2 IDC interrupt on all cores */
 	for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
 		// FIXME: clear just the bit we need
-		intctrl[c].l2.clear = 0xffffffff;
+		intctrl[c].l2.clear = IDC_BIT; //0xffffffff;
 	}
 
-	printk("PWRCTL = 0x%x PWRSTS = 0x%x LPSCTL = 0x%x CLKCTL = 0x%x CLKSTS = 0x%x\n",
-	       shim->pwrctl, shim->pwrsts, shim->lpsctl, shim->clkctl, shim->clksts);
+	// FIXME: this is LPSCTL.FDSPRUN, seemed useful to try but
+	// seems not to do anything, and SOF does it only in what seems
+	// to be vestigial/unreachable code (the case where you try to
+	// start cpu0 from another core).
+	//
+	//shim->lpsctl = BIT(9);
 
-	printk("Set LPSCTL.FDSPRUN\n");
-	shim->lpsctl = BIT(9);
+	const int CPUMASK = (1 << (CONFIG_MP_NUM_CPUS)) - 1;
 
-	printk("Disable idle clock gating on all cores\n");
+	/* This has to have bottom bits set for any CPUs we want the
+	 * host to be able to bring up later.  If power gating isn't
+	 * disabled, then the shut themselves back off (at some point,
+	 * I can't figure out exactly when) and won't come back up
+	 * when flagged in ADSPCS.
+	 */
+	shim->pwrctl = CPUMASK;
+
+	/* CLKCTL must enable and poll for the initialization of the
+	 * oscillator before touching other bits
+	 */
 	shim->clkctl |= BIT(29); // DEFAULT_RO/RLROSCC
 	while ((shim->clksts & BIT(29)) == 0);
 
-	shim->clkctl |= (0xff << 16); // Disable clock gating for all cores
-	shim->clkctl |= BIT(2); // Oscillator CLock Select == HP ring oscillator
-	shim->clkctl |= BIT(1); // LMCS == div/4
+	printk("PWRSTS = 0x%x @%d\n", shim->pwrsts, __LINE__);
 
-	/* FIXME: Try turning it off here, then on on start */
-	printk("ENabling idle power gating on all cores\n");
-	shim->pwrctl &= ~(0xf | BIT(4) | BIT(6));
+	shim->clkctl |= ((CPUMASK << 16) // Disable clock gating for all cores
+			 | BIT(2)     // Oscillator CLock Select == HP ring oscillator
+			 | BIT(1));   // LMCS == div/4
 
-	printk("PWRCTL = 0x%x PWRSTS = 0x%x LPSCTL = 0x%x CLKCTL = 0x%x CLKSTS = 0x%x\n",
-	       shim->pwrctl, shim->pwrsts, shim->lpsctl, shim->clkctl, shim->clksts);
+	/* OK, this is weird.  It's actually the write to CLKCTL that
+	 * seems to uncork the CPUs.  After that, they come up in
+	 * PWRSTS reliably no matter what value I set for gate control
+	 * in PWRCTL...  AND the set of CPUs that come up seems to not
+	 * be the ones set in PWRCTL just now but instead the ones
+	 * from a PREVIOUS run!?
+	 */
+	printk("Spin for CLKCTL to launch cores in PWRSTS\n");
+	while ((shim->pwrsts & 0xf) != CPUMASK);
+}
 
-	k_busy_wait(500000);
+static void CPU_LAUNCH(int cpu_num)
+{
+	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
+	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
 
-	printk("Flagging Zephyr alive to host\n");
-	swregs[3] = 0x12345600;
+	shim->pwrctl |= BIT(cpu_num) | BIT(4);
+
+	while ((shim->pwrsts & BIT(cpu_num)) == 0) {
+	}
+
+	idcregs[0].ctl = BIT(cpu_num);
+	idcregs[cpu_num].ctl = BIT(0);
+
+	intctrl[0].l2.clear = 0xffffffff;
+	intctrl[cpu_num].l2.clear = 0xffffffff;
 }
 
 void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
@@ -301,11 +336,20 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
 	uint32_t vecbase;
 
+	printk("ANDY: PWRSTS = 0x%x @%d\n", shim->pwrsts, __LINE__);
+
+#ifdef CONFIG_IPM_CAVS_IDC
+	// FIXME: remove
+	if (!idc) {
+		idc = device_get_binding(DT_LABEL(DT_INST(0, intel_cavs_idc)));
+	}
+#endif
+
 	if (!soc_mp_initialized) {
 		soc_mp_initialize();
 	}
-
-	__ASSERT(cpu_num == 1, "Only supports only two CPUs!");
+	printk("Flagging Zephyr alive to host\n");
+	swregs[3] = 0x12345600;
 
 	/* Setup data to boot core #1 */
 	__asm__ volatile("rsr.VECBASE %0\n\t" : "=r"(vecbase));
@@ -318,70 +362,42 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	z_mp_stack_top = Z_THREAD_STACK_BUFFER(stack) + sz;
 
+	/* Poll on the host to notify us that ADSPCS indicates the
+	 * other CPU is running, this has to be done fast (it's a
+	 * synchronous IPC interrupt in SOF)
+	 */
 	printk("Waiting on host to flag CPU ready...\n");
 	while ((swregs[3] & BIT(cpu_num)) == 0);
-	k_busy_wait(50000);
 
-	printk("Host says core %d is ready (ZSTAT 0x%x)...\n", cpu_num, swregs[3]);
+	CPU_LAUNCH(cpu_num);
 
-	k_busy_wait(1000);
-	printk("Disabling idle power gating on all cores\n");
-	shim->pwrctl = 0xf | BIT(4) | BIT(6);
+	/* Wait for an in-flight interrupt to clear (FIXME: probably needless) */
+	while (idcregs[0].core[cpu_num].itc & 0x80000000) {
+	}
 
-	printk("Setting up IDC interrupt\n");
+	__ASSERT((intctrl[cpu_num].l2.status & IDC_BIT) == 0,
+		 "cpu%d IDC interrupt already latched?", cpu_num);
+
+	/* Trigger the IDC interrupt, with the entry point as the payload */
+	printk("Sending IDC interrupt...\n");
 	idcregs[0].core[cpu_num].ietc = ((long) z_soc_mp_asm_entry) >> 2;
-	idcregs[0].core[cpu_num].itc = 0x01000002;
-	printk("idcregs[%d].core[0].tfc = 0x%x\n", cpu_num, idcregs[cpu_num].core[0].tfc);
-	printk("idcregs[%d].core[0].tefc = 0x%x\n", cpu_num, idcregs[cpu_num].core[0].tefc);
+	idcregs[0].core[cpu_num].itc = 0x81000002;
 
-	printk("Triggering IDC interrupt @ %p\n", &idcregs[0].core[cpu_num].itc);
-	idcregs[0].core[cpu_num].itc |= BIT(31); /* trigger interrupt */
+	/* Verify that the interrupt controller latched the bit */
+	while ((intctrl[cpu_num].l2.status & IDC_BIT) == 0) {
+	}
+	printk("IDC interrupt latched\n");
 
-	while(idcregs[cpu_num].core[0].tfc & BIT(31));
+	/* Spin, waiting for the other side to clear the bit on startup */
+	while(idcregs[0].core[cpu_num].itc & BIT(31)) {
+	}
 
-#if 0
-	/* Enable IDC interrupt on the other core */
-	printk("Enable interrupt in IDCCTL\n");
-	idc_reg = idc_read(IPC_IDCCTL, cpu_num);
-	idc_reg |= IPC_IDCCTL_IDCTBIE(0);
-	idc_write(IPC_IDCCTL, cpu_num, idc_reg);
-	/* FIXME: 8 is IRQ_BIT_LVL2_IDC / PLATFORM_IDC_INTERRUPT */
-	printk("Enable L2 interrupt mask on other CPU\n");
-	sys_set_bit(DT_REG_ADDR(DT_NODELABEL(cavs0)) + 0x04 +
-		    CAVS_ICTL_INT_CPU_OFFSET(cpu_num), 8);
-
-	/* Send power up message to the other core */
-	printk("Send IDC to CPU\n");
-	uint32_t ietc = IDC_MSG_POWER_UP_EXT((long) z_soc_mp_asm_entry);
-
-	idc_write(IPC_IDCIETC(cpu_num), 0, ietc);
-	idc_write(IPC_IDCITC(cpu_num), 0, IDC_MSG_POWER_UP | IPC_IDCITC_BUSY);
-
-	/* Disable IDC interrupt on other core so IPI won't cause
-	 * them to jump to ISR until the core is fully initialized.
-	 */
-	printk("Disable other side interrupt for now\n");
-	idc_reg = idc_read(IPC_IDCCTL, cpu_num);
-	idc_reg &= ~IPC_IDCCTL_IDCTBIE(0);
-	idc_write(IPC_IDCCTL, cpu_num, idc_reg);
-	sys_set_bit(DT_REG_ADDR(DT_NODELABEL(cavs0)) + 0x00 +
-		      CAVS_ICTL_INT_CPU_OFFSET(cpu_num), 8);
-
-	k_busy_wait(100);
+	idcregs[0].core[cpu_num].itc = 0;
 
 #ifdef CONFIG_SMP_BOOT_DELAY
-	printk("cavs_idc_smp_init()\n");
 	cavs_idc_smp_init(NULL);
 #endif
 
-	/* Clear done bit from responding the power up message */
-	printk("Clear DONE bit reading\n");
-	idc_reg = idc_read(IPC_IDCIETC(cpu_num), 0) | IPC_IDCIETC_DONE;
-	printk("Clear DONE bit writing\n");
-	idc_write(IPC_IDCIETC(cpu_num), 0, idc_reg);
-#endif
-
-	printk("IDC sent, spinning...\n");
 	while (!start_rec.alive)
 		;
 
