@@ -193,18 +193,9 @@ def main():
 
     log.info("Waiting for DSP to reach SMP init...")
     while dsp.ZSTAT != 0x12345600: pass
-    log.info("DSP up and ready\n");
+    log.info("DSP up and ready");
 
-    time.sleep(2);
-
-    # FIXME: THEORY: Now the other cores are set up with PWRCTL that
-    # will idle.  We need to get them into idle.  Pulse them up, let
-    # them reach WAITI and then shut them back down back down.
-    log.info("ANDY: bouncing other cores up/down to engage power gating")
-    dsp.ADSPCS = 0xff0000
-    time.sleep(0.1)
-    dsp.ADSPCS = 0x10000
-    time.sleep(0.1)
+    time.sleep(0.5);
 
     # Do this super-fast, so the DSP main CPU gets
     # as-synchronous-as-possible notification of the second CPU

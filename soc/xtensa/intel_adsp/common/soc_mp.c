@@ -256,9 +256,34 @@ struct cavs_intctrl {
 };
 static volatile struct cavs_intctrl *intctrl = (void *)0x78800;
 
+static void dsp_clock_enable(void)
+{
+	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
+
+	/* CLKCTL must enable and poll for the initialization of the
+	 * oscillator before touching other bits
+	 */
+	shim->clkctl |= BIT(29); /* Request LP Ring Oscillator */
+	while ((shim->clksts & BIT(29)) == 0) {
+	}
+
+	shim->clkctl |= ((CPUMASK << 16) // Disable clock gating for all cores
+			 | BIT(2)        // Oscillator CLock Select == HP ring oscillator
+			 | BIT(1));      // LMCS == div/4
+
+	/* OK, this is weird.  It's actually the write to CLKCTL that
+	 * seems to uncork the CPUs.  After that, they come up in
+	 * PWRSTS reliably no matter what value I set for gate control
+	 * in PWRCTL...  AND the set of CPUs that come up seems to not
+	 * be the ones set in PWRCTL just now but instead the ones
+	 * from a PREVIOUS run!?
+	 */
+	printk("Spin for CLKCTL to launch cores in PWRSTS\n");
+	while ((shim->pwrsts & 0xf) != CPUMASK);
+}
+
 static void soc_mp_initialize(void)
 {
-	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
 	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
 
 	soc_mp_initialized = 1;
@@ -289,31 +314,11 @@ static void soc_mp_initialize(void)
 	 */
 	shim->pwrctl = CPUMASK;
 
-	/* CLKCTL must enable and poll for the initialization of the
-	 * oscillator before touching other bits
-	 */
-	shim->clkctl |= BIT(29); /* Request LP Ring Oscillator */
-	while ((shim->clksts & BIT(29)) == 0) {
-	}
-
-	shim->clkctl |= ((CPUMASK << 16) // Disable clock gating for all cores
-			 | BIT(2)        // Oscillator CLock Select == HP ring oscillator
-			 | BIT(1));      // LMCS == div/4
-
-	/* OK, this is weird.  It's actually the write to CLKCTL that
-	 * seems to uncork the CPUs.  After that, they come up in
-	 * PWRSTS reliably no matter what value I set for gate control
-	 * in PWRCTL...  AND the set of CPUs that come up seems to not
-	 * be the ones set in PWRCTL just now but instead the ones
-	 * from a PREVIOUS run!?
-	 */
-	printk("Spin for CLKCTL to launch cores in PWRSTS\n");
-	while ((shim->pwrsts & 0xf) != CPUMASK);
+	dsp_clock_enable();
 }
 
-static void CPU_LAUNCH(int cpu_num)
+static void cpu_launch(int cpu_num)
 {
-	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
 	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
 
 	shim->pwrctl |= BIT(cpu_num) | BIT(4);
@@ -331,14 +336,10 @@ static void CPU_LAUNCH(int cpu_num)
 void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 		    arch_cpustart_t fn, void *arg)
 {
-	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
 	volatile uint32_t *swregs = z_soc_uncached_ptr((void*)HP_SRAM_WIN0_BASE);
 	uint32_t vecbase;
 
-	printk("ANDY: PWRSTS = 0x%x @%d\n", shim->pwrsts, __LINE__);
-
 #ifdef CONFIG_IPM_CAVS_IDC
-	// FIXME: remove
 	if (!idc) {
 		idc = device_get_binding(DT_LABEL(DT_INST(0, intel_cavs_idc)));
 	}
@@ -361,14 +362,14 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	z_mp_stack_top = Z_THREAD_STACK_BUFFER(stack) + sz;
 
+	cpu_launch(cpu_num);
+
 	/* Poll on the host to notify us that ADSPCS indicates the
 	 * other CPU is running, this has to be done fast (it's a
 	 * synchronous IPC interrupt in SOF)
 	 */
 	printk("Waiting on host to flag CPU ready...\n");
 	while ((swregs[3] & BIT(cpu_num)) == 0);
-
-	CPU_LAUNCH(cpu_num);
 
 	/* Wait for an in-flight interrupt to clear (FIXME: probably needless) */
 	while (idcregs[0].core[cpu_num].itc & 0x80000000) {
@@ -382,12 +383,28 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	idcregs[0].core[cpu_num].ietc = ((long) z_soc_mp_asm_entry) >> 2;
 	idcregs[0].core[cpu_num].itc = 0x81000002;
 
+	/* Older API compatibility check */
+	__ASSERT(idcregs[0].core[cpu_num].itc == (IDC_MSG_POWER_UP | IPC_IDCITC_BUSY),
+		 "msg wrong, expect 0x%x got 0x%x",
+		 (int)(IDC_MSG_POWER_UP | IPC_IDCITC_BUSY),
+		 idcregs[0].core[cpu_num].itc);
+	__ASSERT(idcregs[0].core[cpu_num].ietc
+		 == IDC_MSG_POWER_UP_EXT((long)z_soc_mp_asm_entry), "");
+
 	/* Verify that the interrupt controller latched the bit */
 	while ((intctrl[cpu_num].l2.status & IDC_BIT) == 0) {
 	}
 	printk("IDC interrupt latched\n");
 
-	/* Spin, waiting for the other side to clear the bit on startup */
+	__ASSERT((intctrl[cpu_num].l2.mask & IDC_BIT) == 0,
+		 "cpu%d IDC interrupt masked!", cpu_num);
+
+	/* Spin, waiting for the interrupt to show handled on the other CPU */
+	while ((intctrl[cpu_num].l2.status & IDC_BIT) != 0) {
+	}
+	printk("IDC Interrupt handled\n");
+
+	/* Spin, waiting for the other side to clear the DONE bit */
 	while(idcregs[0].core[cpu_num].itc & BIT(31)) {
 	}
 
