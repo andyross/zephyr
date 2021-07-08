@@ -201,10 +201,11 @@ def main():
     # as-synchronous-as-possible notification of the second CPU
     # powering up.
     log.info("Powering up other cores... (do it fast!)")
-    dsp.ADSPCS = 0xfffefe
+    #dsp.ADSPCS = 0xfffefe
+    dsp.ADSPCS = 0x3fefe
     coremsk = (dsp.ADSPCS >> 16) & 0xff
     while (dsp.ADSPCS >> 24) & coremsk != coremsk: pass
-    dsp.ADSPCS = 0xff0000
+    dsp.ADSPCS = 0x30000
     dsp.ZSTAT = coremsk
 
     log.info("OK?")

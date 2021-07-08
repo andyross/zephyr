@@ -353,6 +353,7 @@ static void soc_mp_initialize(void)
 
 	soc_mp_initialized = 1;
 
+	printk("soc_mp_initialize() CPUMASK = 0x%x\n", CPUMASK);
 	setup_tgl_trampoline();
 
 	dsp_clock_enable();
@@ -365,7 +366,7 @@ static void soc_mp_initialize(void)
 	 * on a code path that I don't think can ever be hit (enabling
 	 * cpu0 from another CPU).  Seems to be a noop.
 	 */
-	//shim->lpsctl = ((shim->lpsctl & ~(BIT(7) | BIT(12))) | BIT(9));
+	shim->lpsctl = ((shim->lpsctl & ~(BIT(7) | BIT(12))) | BIT(9));
 
 	/* This has to have bottom bits set for any CPUs we want the
 	 * host to be able to bring up later.  If power gating isn't
@@ -379,6 +380,8 @@ static void soc_mp_initialize(void)
 static void cpu_launch(int cpu_num)
 {
 	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
+
+	printk("cpu_launch()\n");
 
 	shim->pwrctl |= BIT(cpu_num) | BIT(4);
 
@@ -421,14 +424,14 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	printk("Flagging Zephyr alive to host\n");
 	swregs[3] = 0x12345600;
 
-	cpu_launch(cpu_num);
-
 	/* Poll on the host to notify us that ADSPCS indicates the
 	 * other CPU is running, this has to be done fast (it's a
 	 * synchronous IPC interrupt in SOF)
 	 */
 	printk("Waiting on host to flag CPU ready...\n");
 	while ((swregs[3] & BIT(cpu_num)) == 0);
+
+	cpu_launch(cpu_num);
 
 	/* Wait for an in-flight interrupt to clear (FIXME: probably needless) */
 	while (idcregs[0].core[cpu_num].itc & 0x80000000) {
