@@ -40,7 +40,13 @@ __weak void k_sys_fatal_error_handler(unsigned int reason,
 	ARG_UNUSED(esf);
 
 	LOG_PANIC();
-	LOG_ERR("Halting system");
+	LOG_ERR("Halting system [ANDY]");
+	arch_irq_lock();
+	while(1) {
+		for(volatile int i=0; i<6000000; i++) {
+			printk(".\n");
+		}
+	}
 	arch_system_halt(reason);
 	CODE_UNREACHABLE; /* LCOV_EXCL_LINE */
 }

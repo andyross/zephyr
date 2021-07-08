@@ -118,10 +118,15 @@ BUILD_ASSERT(XCHAL_EXCM_LEVEL == 5);
 
 int cavs_idc_smp_init(const struct device *dev);
 
+static int ANDY_MP_ENTRY_ENTERED;
+
 void z_mp_entry(void)
 {
 	volatile int ie;
 	uint32_t idc_reg;
+
+	ANDY_MP_ENTRY_ENTERED = 1;
+
 	printk("MP ENTRY!\n");
 
 	/* We don't know what the boot ROM might have touched and we
@@ -282,11 +287,75 @@ static void dsp_clock_enable(void)
 	while ((shim->pwrsts & 0xf) != CPUMASK);
 }
 
+/* Tiny trampoline stub for MP startup on Tiger Lake.  In that
+ * configuration, the other cores don't have their own ROM (which
+ * would otherwise wait for an entry point via an IDC interrupt) and
+ * begin at reset running at a fixed address at the bottom of LP-SRAM.
+ * This code gets copied there, populated with a runtime immediate
+ * address in the second word, and then jumps to the real entry point.
+ *
+ * Mildly complicated by the fact that LP-SRAM is more than an 18-bit
+ * immediate jump offset from our entry point in HP-SRAM, that Xtensa
+ * immediate values can only be loaded from addresses behind the PC,
+ * and that the assembler refuses to emit a L32R instruction that
+ * doesn't reference assembler-generated immediate sections (so that
+ * one is hand-encoded).
+ */
+extern uint32_t z_soc_tgl_tramp;
+extern uint32_t z_soc_tgl_tramp_end;
+__asm__(".align 4                    \n\t"
+	".global z_soc_tgl_tramp     \n\t"
+	"z_soc_tgl_tramp:            \n\t"
+	"  j tramp_after_imm         \n\t" /* 3-byte jump over immediate */
+	".align 4                    \n\t"
+	"tramp_entry_addr:           \n\t"
+	"  .word 0                   \n\t" /* immediate address goes here */
+	"tramp_after_imm:            \n\t"
+	"  .byte 1, 0xff, 0xff       \n\t" /* l32r a0, tramp_entry_addr */
+	"  jx a0                     \n\t" /* jump to the address in a0 */
+	".align 4                    \n\t"
+	".global z_soc_tgl_tramp_end \n\t"
+	"z_soc_tgl_tramp_end:        \n\t"
+	);
+
+static void setup_tgl_trampoline(void)
+{
+        uint32_t *dst = z_soc_uncached_ptr((void *) LP_SRAM_BASE);
+	uint32_t *src = &z_soc_tgl_tramp;
+
+	/* We might have written to it */
+	__asm__ volatile("dhi %0, 0" :: "r"(z_soc_cached_ptr(dst)));
+
+	for (int i = 0; &src[i] < &z_soc_tgl_tramp_end; i++) {
+		dst[i] = src[i];
+	}
+
+	/* Populate the immediate field with the right entry point */
+	dst[1] = (uint32_t) z_soc_mp_asm_entry;
+
+	/* This core surely never loaded code from those addresses,
+	 * but just to be safe...
+	 */
+	__asm__ volatile("ihi %0, 0" :: "r"(z_soc_uncached_ptr(dst)));
+
+	// NOTE: can validate this code works by jumping to it and
+	// seeing that we end up in the SMP entry path for a second
+	// CPU (and then hang, of course)
+	//
+	//__asm__ volatile("jx %0" :: "r"(dst)); //DEBUG
+
+	printk("TGL LP-SRAM trampoline initialized\n");
+}
+
 static void soc_mp_initialize(void)
 {
 	volatile struct soc_dsp_shim_regs *shim = (void *)SOC_DSP_SHIM_REG_BASE;
 
 	soc_mp_initialized = 1;
+
+	setup_tgl_trampoline();
+
+	dsp_clock_enable();
 
 	/* Unmask our own IDC interrupt */
 	intctrl[0].l2.clear = IDC_BIT;
@@ -296,8 +365,7 @@ static void soc_mp_initialize(void)
 	 * on a code path that I don't think can ever be hit (enabling
 	 * cpu0 from another CPU).  Seems to be a noop.
 	 */
-	shim->lpsctl = ((shim->lpsctl & ~(BIT(7) | BIT(12)))
-			| BIT(9));
+	//shim->lpsctl = ((shim->lpsctl & ~(BIT(7) | BIT(12))) | BIT(9));
 
 	/* This has to have bottom bits set for any CPUs we want the
 	 * host to be able to bring up later.  If power gating isn't
@@ -306,8 +374,6 @@ static void soc_mp_initialize(void)
 	 * when flagged in ADSPCS.
 	 */
 	shim->pwrctl = CPUMASK;
-
-	dsp_clock_enable();
 }
 
 static void cpu_launch(int cpu_num)
@@ -338,12 +404,6 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	}
 #endif
 
-	if (!soc_mp_initialized) {
-		soc_mp_initialize();
-	}
-	printk("Flagging Zephyr alive to host\n");
-	swregs[3] = 0x12345600;
-
 	/* Setup data to boot core #1 */
 	__asm__ volatile("rsr.VECBASE %0\n\t" : "=r"(vecbase));
 
@@ -354,6 +414,12 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	start_rec.alive = 0;
 
 	z_mp_stack_top = Z_THREAD_STACK_BUFFER(stack) + sz;
+
+	if (!soc_mp_initialized) {
+		soc_mp_initialize();
+	}
+	printk("Flagging Zephyr alive to host\n");
+	swregs[3] = 0x12345600;
 
 	cpu_launch(cpu_num);
 
@@ -392,6 +458,10 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	__ASSERT((intctrl[cpu_num].l2.mask & IDC_BIT) == 0,
 		 "cpu%d IDC interrupt masked!", cpu_num);
 
+	//printk("HACK: jump straight to trampoline\n");
+	//__asm__ volatile("jx %0" :: "r"(LP_SRAM_BASE));
+
+#if 0
 	/* Spin, waiting for the interrupt to show handled on the other CPU */
 	while ((intctrl[cpu_num].l2.status & IDC_BIT) != 0) {
 	}
@@ -400,13 +470,14 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	/* Spin, waiting for the other side to clear the DONE bit */
 	while(idcregs[0].core[cpu_num].itc & BIT(31)) {
 	}
-
+#endif
 	idcregs[0].core[cpu_num].itc = 0;
 
 #ifdef CONFIG_SMP_BOOT_DELAY
 	cavs_idc_smp_init(NULL);
 #endif
 
+	printk("Waiting for MP core\n");
 	while (!start_rec.alive)
 		;
 
