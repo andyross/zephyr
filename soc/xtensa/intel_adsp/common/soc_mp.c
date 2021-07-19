@@ -312,6 +312,8 @@ __asm__(".align 4                    \n\t"
 	"  .word 0                   \n\t" /* immediate address goes here */
 	"tramp_after_imm:            \n\t"
 	"  .byte 1, 0xff, 0xff       \n\t" /* l32r a0, tramp_entry_addr */
+	"  movi a2, 0x15             \n\t"
+	"  wsr.ATOMCTL a2            \n\t" // FIXME: need this?
 	"  jx a0                     \n\t" /* jump to the address in a0 */
 	".align 4                    \n\t"
 	".global z_soc_tgl_tramp_end \n\t"
@@ -322,6 +324,9 @@ static void setup_tgl_trampoline(void)
 {
         uint32_t *dst = z_soc_uncached_ptr((void *) LP_SRAM_BASE);
 	uint32_t *src = &z_soc_tgl_tramp;
+
+
+	printk("ANDY: setup trampoline at %p\n", dst);
 
 	/* We might have written to it */
 	__asm__ volatile("dhi %0, 0" :: "r"(z_soc_cached_ptr(dst)));
@@ -374,7 +379,7 @@ static void soc_mp_initialize(void)
 	 * I can't figure out exactly when) and won't come back up
 	 * when flagged in ADSPCS.
 	 */
-	shim->pwrctl = CPUMASK;
+	//shim->pwrctl = CPUMASK;
 }
 
 static void cpu_launch(int cpu_num)
