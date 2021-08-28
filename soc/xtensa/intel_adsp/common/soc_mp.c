@@ -425,7 +425,7 @@ void idc_isr(void *param)
 	 * CPU".
 	 */
 	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
-		IDC[start_rec.cpu].core[i].tfc = BIT(31);
+		IDC[prid()].core[i].tfc = BIT(31);
 	}
 }
 
@@ -457,9 +457,18 @@ void soc_idc_init(void)
 		/* Also unmask the IDC interrupt for every core in the
 		 * L2 mask register.
 		 */
-		CAVS_INTCTRL->l2.clear = CAVS_L2_IDC;
+		CAVS_INTCTRL[core].l2.clear = CAVS_L2_IDC;
 
 	}
+
+	/* Clear out any existing pending interrupts that might be present */
+	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+		for (int j = 0; j < CONFIG_MP_NUM_CPUS; j++) {
+			IDC[i].core[j].tfc = BIT(31);
+		}
+	}
+
+	cpus_active[0] = true;
 }
 
 /**
