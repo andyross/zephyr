@@ -336,6 +336,9 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	z_mp_stack_top = Z_THREAD_STACK_BUFFER(stack) + sz;
 
+	/* Pre-2.x cAVS delivers the IDC to ROM code, so unmask it */
+	CAVS_INTCTRL[1].l2.clear = CAVS_L2_IDC;
+
 	/* Disable automatic power and clock gating for that CPU, so
 	 * it won't just go back to sleep.  Note that after startup,
 	 * the cores are NOT power gated even if they're configured to
