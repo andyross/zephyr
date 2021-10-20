@@ -6,8 +6,9 @@
  * Author: Marcin Maka <marcin.maka@linux.intel.com>
  */
 
+#include <autoconf.h> /* not built by zephyr */
 #include "manifest.h"
-#include <soc/memory.h>
+#include <cavs-mem.h>
 
 /*
  * Each module has an entry in the FW manifest header. This is NOT part of

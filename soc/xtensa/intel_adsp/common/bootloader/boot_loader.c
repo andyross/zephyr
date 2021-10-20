@@ -6,6 +6,7 @@
  * Author: Liam Girdwood <liam.r.girdwood@linux.intel.com>
  */
 
+#include <autoconf.h> /* not built by zephyr */
 #include <devicetree.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@
 #include <soc.h>
 #include <arch/xtensa/cache.h>
 #include <cavs-shim.h>
+#include <cavs-mem.h>
 #include "platform.h"
 #include "manifest.h"
 
