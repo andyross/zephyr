@@ -332,6 +332,18 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 		CAVS_SHIM.clkctl |= BIT(16 + cpu_num);
 	}
 
+	/* Workaround.  SOF seems to have some older code on pre-2.5
+	 * hardware that is remasking these interrupts (probably a
+	 * variant of the same code we inherited here to mask it while
+	 * the ROM handles the startup IDC?).  Unmask unconditionally
+	 * while we get this figured out, it's cheap and safe.
+	 */
+	if (IS_ENABLED(CONFIG_SOF)) {
+		for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
+			IDC[c].busy_int |= IDC_ALL_CORES;
+		}
+	}
+
 	/* Send power-up message to the other core.  Start address
 	 * gets passed via the IETC scratch register (only 30 bits
 	 * available, so it's sent shifted).  The write to ITC
