@@ -39,6 +39,8 @@ extern void z_reinit_idle_thread(int i);
 
 #define IDC_ALL_CORES (BIT(CONFIG_MP_NUM_CPUS) - 1)
 
+#define ROM_IDC_DELAY 100
+
 struct cpustart_rec {
 	uint32_t        cpu;
 	arch_cpustart_t	fn;
@@ -231,12 +233,12 @@ void z_mp_entry(void)
 		CAVS_INTCTRL[start_rec.cpu].l2.clear = CAVS_L2_IDC;
 	}
 
-	/* Unmask IDC interrupts from this core to all others.  A
-	 * delay is needed following the write on older hardware, or
-	 * else the modification gets lost.  Voodoo.
+	/* Unmask IDC interrupts from this core to all others.  On
+	 * hardware with ROM-based startup, we need a delay to wait
+	 * for the mask we're doing ourselves in arch_start_cpu()!
 	 */
-	if (IS_ENABLED(CONFIG_SOC_SERIES_INTEL_CAVS_V15)) {
-		k_busy_wait(10);
+	if (!IS_ENABLED(CONFIG_SOC_SERIES_INTEL_CAVS_V25)) {
+		k_busy_wait(ROM_IDC_DELAY);
 	}
 	IDC[start_rec.cpu].busy_int = IDC_ALL_CORES;
 
@@ -352,7 +354,7 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	 * initialized.  Wait for the startup IDC to arrive though.
 	 */
 	IDC[cpu_num].busy_int &= ~IDC_ALL_CORES;
-	k_busy_wait(100);
+	k_busy_wait(ROM_IDC_DELAY);
 #endif
 }
 
