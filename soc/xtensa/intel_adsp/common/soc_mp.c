@@ -39,6 +39,8 @@ extern void z_reinit_idle_thread(int i);
 
 #define IDC_ALL_CORES (BIT(CONFIG_MP_NUM_CPUS) - 1)
 
+#define CAVS15_ROM_IDC_DELAY 500
+
 struct cpustart_rec {
 	uint32_t        cpu;
 	arch_cpustart_t	fn;
@@ -257,6 +259,16 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 
 	__ASSERT_NO_MSG(!cpus_active[cpu_num]);
 
+#ifdef CONFIG_SOC_SERIES_INTEL_CAVS_V15
+	/* On the older hardware, core power is managed by the host
+	 * and aren't able to poll for anything to know it's
+	 * available.  Need a delay here so that the hardware and ROM
+	 * firmware can complete initialization and be waiting for the
+	 * IDC we're about to send.
+	 */
+	k_busy_wait(CAVS15_ROM_IDC_DELAY);
+#endif
+
 #ifdef CONFIG_SOC_SERIES_INTEL_CAVS_V25
 	/* On cAVS v2.5, MP startup works differently.  The core has
 	 * no ROM, and starts running immediately upon receipt of an
@@ -309,19 +321,6 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	CAVS_SHIM.pwrctl |= CAVS_PWRCTL_TCPDSPPG(cpu_num);
 	if (!IS_ENABLED(CONFIG_SOC_SERIES_INTEL_CAVS_V15)) {
 		CAVS_SHIM.clkctl |= CAVS_CLKCTL_TCPLCG(cpu_num);
-	}
-
-	/* Workaround.  SOF seems to have some older code on pre-2.5
-	 * hardware that is remasking these interrupts (probably a
-	 * variant of the same code we inherited here to mask it while
-	 * the ROM handles the startup IDC?).  Unmask unconditionally
-	 * while we get this figured out, it's cheap and safe.
-	 */
-	if (IS_ENABLED(CONFIG_SOF)) {
-		CAVS_INTCTRL[cpu_num].l2.clear = CAVS_L2_IDC;
-		for (int c = 0; c < CONFIG_MP_NUM_CPUS; c++) {
-			IDC[c].busy_int |= IDC_ALL_CORES;
-		}
 	}
 
 	/* Send power-up message to the other core.  Start address
