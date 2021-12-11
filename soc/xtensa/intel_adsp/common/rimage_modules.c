@@ -1,5 +1,6 @@
 #include <manifest.h>
 #include <cavs-mem.h>
+#include <toolchain.h>
 
 /* These data structures define "module manifest" headers.  They
  * aren't runtime data used by Zephyr, but instead act as input
@@ -9,7 +10,7 @@
  */
 
 __attribute__((section(".module.boot")))
-struct sof_man_module_manifest boot_manifest =
+const struct sof_man_module_manifest boot_manifest =
 	{ .module = {
 		     .name = "BRNGUP",
 		     .uuid = { 0xcc, 0x48, 0x7b, 0x0d, 0xa9, 0x1e, 0x0a, 0x47,
@@ -21,7 +22,7 @@ struct sof_man_module_manifest boot_manifest =
 	}};
 
 __attribute__((section(".module.main")))
-struct sof_man_module_manifest main_manifest =
+const struct sof_man_module_manifest main_manifest =
 	{ .module = {
 		     .name	= "BASEFW",
 		     .uuid	= { 0x2e, 0x9e, 0x86, 0xfc, 0xf8, 0x45, 0x45, 0x40,
