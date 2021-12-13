@@ -349,10 +349,8 @@ SECTIONS {
     *(.sdata2.*)
     *(.gnu.linkonce.s2.*)
     KEEP(*(.jcr))
-    . = ALIGN(4096);
     *(.gna_model)
     _data_end = .;
-    . = ALIGN(4096);
   } >ucram
 
   .lit4 SEGSTART_CACHED : {
@@ -386,7 +384,15 @@ SECTIONS {
     *(.cached .cached.*)
   } >ram
 
-  .bss SEGSTART_UNCACHED (NOLOAD) : ALIGN(4096)
+  /* Rimage requires 4k alignment between "DATA" and "BSS", can't do
+   * this in the section declaration below because we're also changing
+   * cacheability and that leaves a gap in the image large enough for
+   * binutils to decide to warn about (no way to turn that off, it
+   * seems, --warn-section-align is on by default)
+   */
+  . = ALIGN(4096);
+
+  .bss SEGSTART_UNCACHED (NOLOAD) :
   {
     _bss_start = .;
     *(.dynsbss)
@@ -429,53 +435,6 @@ SECTIONS {
   .module.boot : { KEEP(*(.module.boot)) }
   .module.main : { KEEP(*(.module.main)) }
 
-  .comment : { *(.comment) }
-  .debug : { *(.debug) }
-  .line : { *(.line) }
-  .debug_srcinfo : { *(.debug_srcinfo) }
-  .debug_sfnames : { *(.debug_sfnames) }
-  .debug_aranges : { *(.debug_aranges) }
-  .debug_pubnames : { *(.debug_pubnames) }
-  .debug_info : { *(.debug_info) }
-  .debug_abbrev : { *(.debug_abbrev) }
-  .debug_line : { *(.debug_line) }
-  .debug_frame : { *(.debug_frame) }
-  .debug_str : { *(.debug_str) }
-  .debug_loc : { *(.debug_loc) }
-  .debug_macinfo : { *(.debug_macinfo) }
-  .debug_weaknames : { *(.debug_weaknames) }
-  .debug_funcnames : { *(.debug_funcnames) }
-  .debug_typenames : { *(.debug_typenames) }
-  .debug_varnames : { *(.debug_varnames) }
-  .debug_ranges : { *(.debug_ranges) }
-  .xtensa.info : { *(.xtensa.info) }
-  .xt.insn : {
-    KEEP (*(.xt.insn))
-    KEEP (*(.gnu.linkonce.x.*))
-  }
-  .xt.prop : {
-    KEEP (*(.xt.prop))
-    KEEP (*(.xt.prop.*))
-    KEEP (*(.gnu.linkonce.prop.*))
-  }
-  .xt.lit : {
-    KEEP (*(.xt.lit))
-    KEEP (*(.xt.lit.*))
-    KEEP (*(.gnu.linkonce.p.*))
-  }
-  .xt.profile_range : {
-    KEEP (*(.xt.profile_range))
-    KEEP (*(.gnu.linkonce.profile_range.*))
-  }
-  .xt.profile_ranges : {
-    KEEP (*(.xt.profile_ranges))
-    KEEP (*(.gnu.linkonce.xt.profile_ranges.*))
-  }
-  .xt.profile_files : {
-    KEEP (*(.xt.profile_files))
-    KEEP (*(.gnu.linkonce.xt.profile_files.*))
-  }
-
  .static_uuid_entries : {
     *(*.static_uuids)
   }
@@ -494,9 +453,38 @@ SECTIONS {
    * sounds like a struct should be declared packed somewhere...)
    */
   .fw_metadata : ALIGN(16) {
-    . = .;
     KEEP (*(.fw_metadata))
     . = ALIGN(16);
+  }
+
+#include <linker/debug-sections.ld>
+
+  .xtensa.info 0 : { *(.xtensa.info) }
+  .xt.insn 0 : {
+    KEEP (*(.xt.insn))
+    KEEP (*(.gnu.linkonce.x.*))
+  }
+  .xt.prop 0 : {
+    KEEP (*(.xt.prop))
+    KEEP (*(.xt.prop.*))
+    KEEP (*(.gnu.linkonce.prop.*))
+  }
+  .xt.lit 0 : {
+    KEEP (*(.xt.lit))
+    KEEP (*(.xt.lit.*))
+    KEEP (*(.gnu.linkonce.p.*))
+  }
+  .xt.profile_range 0 : {
+    KEEP (*(.xt.profile_range))
+    KEEP (*(.gnu.linkonce.profile_range.*))
+  }
+  .xt.profile_ranges 0 : {
+    KEEP (*(.xt.profile_ranges))
+    KEEP (*(.gnu.linkonce.xt.profile_ranges.*))
+  }
+  .xt.profile_files 0 : {
+    KEEP (*(.xt.profile_files))
+    KEEP (*(.gnu.linkonce.xt.profile_files.*))
   }
 
 #ifdef CONFIG_GEN_ISR_TABLES
