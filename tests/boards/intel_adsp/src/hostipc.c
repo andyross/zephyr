@@ -80,6 +80,25 @@ void test_host_ipc(void)
 	WAIT_FOR(cavs_ipc_is_complete(CAVS_HOST_DEV));
 	WAIT_FOR(msg_flag);
 
+	/* A third time, this time using the more portable inotice API
+	 * (it's the same device and same functions, but a subset more
+	 * appropriate for app usage and for other platforms to
+	 * implement)
+	 */
+	printk("INotice request...\n");
+	zassert_equal(CAVS_HOST_DEV, INOTICE_DEV, "inotice/cavs_ipc devices differ");
+	cavs_ipc_set_message_handler(INOTICE_DEV, ipc_message, NULL);
+	zassert_equal(inotice_msg_data_bits(INOTICE_DEV), 31, "wrong data bits");
+	zassert_equal(inotice_msg_ext_data_bits(INOTICE_DEV),
+		      IS_ENABLED(CONFIG_SOC_SERIES_INTEL_CAVS_V15) ? 30 : 32,
+		      "wrong ext_data bits");
+	done_flag = false;
+	msg_flag = false;
+	ret = inotice_send_message(INOTICE_DEV, RETURN_MSG, RETURN_MSG_SYNC_VAL);
+	zassert_true(ret, "send failed");
+	WAIT_FOR(done_flag);
+	WAIT_FOR(msg_flag);
+
 	/* Same, but we'll complete it asynchronously (1.8+ only) */
 	if (!IS_ENABLED(CONFIG_SOC_SERIES_INTEL_CAVS_V15)) {
 		printk("Return message request, async...\n");

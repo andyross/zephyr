@@ -55,7 +55,7 @@
 		};
 
 		cavs_host_ipc: cavs_host_ipc@1180 {
-			compatible = "intel,cavs-host-ipc";
+			compatible = "zephyr,inotice";
 			reg = <0x1180 0x30>;
 			interrupts = <7 0 0>;
 			interrupt-parent = <&cavs0>;

@@ -6,7 +6,7 @@
 #include <spinlock.h>
 
 void cavs_ipc_set_message_handler(const struct device *dev,
-				  cavs_ipc_handler_t fn, void *arg)
+				  inotice_handler_t fn, void *arg)
 {
 	struct cavs_ipc_data *devdata = dev->data;
 	k_spinlock_key_t key = k_spin_lock(&devdata->lock);
@@ -147,6 +147,17 @@ static int dt_init(const struct device *dev)
 	return cavs_ipc_init(dev);
 }
 
+static const struct inotice_api cavs_ipc_api = {
+	.set_handler = cavs_ipc_set_message_handler,
+	.send_msg = cavs_ipc_send_message,
+	.msg_data_bits = 31,
+#ifdef CONFIG_SOC_SERIES_INTEL_CAVS_V15
+	.msg_ext_data_bits = 30,
+#else
+	.msg_ext_data_bits = 32,
+#endif
+};
+
 static const struct cavs_ipc_config ipc_host_config = {
 	.regs = (void *)DT_REG_ADDR(CAVS_HOST_DTNODE),
 };
@@ -154,5 +165,5 @@ static const struct cavs_ipc_config ipc_host_config = {
 static struct cavs_ipc_data ipc_host_data;
 
 DEVICE_DT_DEFINE(CAVS_HOST_DTNODE, dt_init, NULL, &ipc_host_data, &ipc_host_config,
-		 PRE_KERNEL_2, 0, NULL);
+		 PRE_KERNEL_2, 0, &cavs_ipc_api);
 #endif

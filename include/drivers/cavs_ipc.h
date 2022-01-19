@@ -6,35 +6,11 @@
 
 #include <kernel.h>
 #include <device.h>
+#include <drivers/inotice.h>
 
 struct cavs_ipc_config {
 	volatile struct cavs_ipc *regs;
 };
-
-/** @brief cAVS IPC Message Handler Callback
- *
- * This function, once registered via cavs_ipc_set_message_handler(),
- * is invoked in interrupt context to service messages sent from the
- * foreign/connected IPC context.  The message contents of the TDR and
- * TDD registers are provided in the data/ext_data argument.
- *
- * The function should return true if processing of the message is
- * complete and return notification to the other side (via the TDA
- * register) is desired immediately.  Returning false means that no
- * return "DONE" interrupt will occur until cavs_ipc_complete() is
- * called on this device at some point in the future.
- *
- * @note Further messages on the link will not be transmitted or
- * received while an in-progress message remains incomplete!
- *
- * @param dev IPC device
- * @param arg Registered argument from cavs_ipc_set_message_handler()
- * @param data Message data from other side (low bits of TDR register)
- * @param ext_dat Extended message data (TDD register)
- * @return true if the message is completely handled
- */
-typedef bool (*cavs_ipc_handler_t)(const struct device *dev, void *arg,
-				   uint32_t data, uint32_t ext_data);
 
 /** @brief cAVS IPC Message Complete Callback
  *
@@ -57,7 +33,7 @@ typedef void (*cavs_ipc_done_t)(const struct device *dev, void *arg);
 struct cavs_ipc_data {
 	struct k_sem sem;
 	struct k_spinlock lock;
-	cavs_ipc_handler_t handle_message;
+	inotice_handler_t handle_message;
 	void *handler_arg;
 	cavs_ipc_done_t done_notify;
 	void *done_arg;
@@ -67,14 +43,14 @@ void z_cavs_ipc_isr(const void *devarg);
 
 /** @brief Register message callback handler
  *
- * This function registers a handler function for received messages.
+ * See inotice_set_message_handler()
  *
  * @param dev IPC device
  * @param fn Callback function
  * @param arg Value to pass as the "arg" parameter to the function
  */
 void cavs_ipc_set_message_handler(const struct device *dev,
-				  cavs_ipc_handler_t fn, void *arg);
+				  inotice_handler_t fn, void *arg);
 
 /** @brief Register done callback handler
  *
@@ -120,13 +96,12 @@ void cavs_ipc_complete(const struct device *dev);
  */
 bool cavs_ipc_is_complete(const struct device *dev);
 
-
 /** @brief Send an IPC message
  *
- * Sends a message to the other side of an IPC link.  The data and
- * ext_data parameters are passed using the IDR/IDD registers.
- * Returns true if the message was sent, false if a current message is
- * in progress (in the sense of cavs_ipc_is_complete()).
+ * See inotice_send_message().  The data and ext_data parameters are
+ * passed using the IDR/IDD registers.  Returns true if the message
+ * was sent, false if a current message is in progress (in the sense
+ * of cavs_ipc_is_complete()).
  *
  * @param dev IPC device
  * @param data 30 bits value to transmit with the message (IDR register)
