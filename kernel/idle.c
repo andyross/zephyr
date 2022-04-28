@@ -61,6 +61,13 @@ void idle(void *unused1, void *unused2, void *unused3)
 		 */
 		(void) arch_irq_lock();
 
+		/* Whiteboxing hook, called with interrupts locked */
+		extern void (*IDLE_HOOK)(void);
+		if (IDLE_HOOK) {
+			IDLE_HOOK();
+			IDLE_HOOK = NULL;
+		}
+
 #ifdef CONFIG_PM
 		_kernel.idle = z_get_next_timeout_expiry();
 
