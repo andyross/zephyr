@@ -107,6 +107,8 @@ kobjects = OrderedDict([
     ("sys_mutex", (None, True, False)),
     ("k_futex", (None, True, False)),
     ("k_condvar", (None, False, True)),
+    ("k_zync", (None, False, False)),
+    ("z_zync_pair", (None, False, False)),
     ("k_event", ("CONFIG_EVENTS", False, True)),
     ("ztest_suite_node", ("CONFIG_ZTEST", True, False)),
     ("ztest_suite_stats", ("CONFIG_ZTEST", True, False)),

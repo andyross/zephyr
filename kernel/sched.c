@@ -928,6 +928,12 @@ bool z_set_prio(struct k_thread *thread, int prio)
 
 void z_thread_priority_set(struct k_thread *thread, int prio)
 {
+#ifdef CONFIG_ZYNC_PRIO_BOOST
+	// FIXME: doesn't propagate to the owner of any zyncs we hold,
+	// should document limitation, since it's historical
+	thread->base.zync_prio = prio;
+#endif
+
 	bool need_sched = z_set_prio(thread, prio);
 
 	flag_ipi();

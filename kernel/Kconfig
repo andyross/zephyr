@@ -311,6 +311,46 @@ config WAITQ_DUMB
 
 endchoice # WAITQ_ALGORITHM
 
+config ZYNC_VALIDATE
+	bool "Enable k_zync validation layer"
+	default y if ASSERT && !USERSPACE
+	help
+	  The zync facility includes a simple validation layer to
+	  detect circumstances like freeing locks from the wrong
+	  thread, recursively locking (non-recursive) zyncs, failing
+	  to hold the wrapper lock in condition variables, etc...
+	  This has significant performance impact when USERSPACE is
+	  enabled and needs to be enabled manually.
+
+config ZYNC_PRIO_BOOST
+	bool "Enable Zync priority inheritance algorithm"
+	help
+	  When selected, k_zync() will be able to boost the priority
+	  of the "owner" of a Zync to the priority of any of its
+	  waiters.  This has significant performance impact on
+	  k_mutex; most apps that don't need PI semantics should leave
+	  it off.
+
+config ZYNC_MAX_VAL
+	bool "Enable Zync maximum value clamping"
+	help
+	  When selected, the maximum atom value for a Zync may be
+	  controlled per-object by application code.  Very few apps
+	  need this (historically, it was used to make "semaphores"
+	  behave like "locks"), and it incurs significant performance
+	  overhead with k_sem.  Leave it off.  This is likely to be
+	  deprecated in the future.
+
+config ZYNC_RECURSIVE
+	bool "Enable recursive Zync locks"
+	help
+	  When selected, a k_zync can be configured as a recursive
+	  lock, allowing a single thread to take the lock multiple
+	  times.  As with PRIO_BOOST and MAX_VAL, this defeats the
+	  lockless operation of the zync and apps should consider
+	  carefully whether to enable it, especially with userspace
+	  enabled.
+
 menu "Kernel Debugging and Metrics"
 
 config INIT_STACKS
