@@ -44,6 +44,7 @@ list(APPEND kernel_files
   work.c
   sched.c
   condvar.c
+  zync.c
   )
 
 if(CONFIG_SMP)
