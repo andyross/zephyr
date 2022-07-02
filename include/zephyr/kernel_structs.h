@@ -227,8 +227,8 @@ extern bool z_priq_rb_lessthan(struct rbnode *a, struct rbnode *b);
 #define Z_WAIT_Q_INIT(wait_q) { { { .lessthan_fn = z_priq_rb_lessthan } } }
 
 #define Z_WAIT_Q_LAZY_INIT(wq) do {				\
-	if ((wq)->waitq.lessthan_fn == NULL) {			\
-		(wq)->waitq.lessthan_fn = z_priq_rb_lessthan;	\
+	if ((wq)->waitq.tree.lessthan_fn == NULL) {			\
+		(wq)->waitq.tree.lessthan_fn = z_priq_rb_lessthan;	\
 	} } while(0)
 
 #else

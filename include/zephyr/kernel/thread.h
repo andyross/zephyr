@@ -109,6 +109,9 @@ struct _thread_base {
 	uint8_t cpu_mask;
 #endif
 
+	IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST,
+		   (int8_t zync_prio));
+
 	/* data returned by APIs */
 	void *swap_data;
 

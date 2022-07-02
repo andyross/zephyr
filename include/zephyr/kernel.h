@@ -1342,8 +1342,6 @@ struct k_timer {
 
 	/* user-specific data, also used to support legacy features */
 	void *user_data;
-
-	SYS_PORT_TRACING_TRACKING_FIELD(k_timer)
 };
 
 #define Z_TIMER_INITIALIZER(obj, expiry, stop) \
