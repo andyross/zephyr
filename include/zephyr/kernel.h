@@ -2718,34 +2718,18 @@ extern struct k_work_q k_sys_work_q;
  * @ingroup mutex_apis
  */
 struct k_mutex {
-	/** Mutex wait queue */
-	_wait_q_t wait_q;
-	/** Mutex owner */
-	struct k_thread *owner;
-
-	/** Current lock count */
-	uint32_t lock_count;
-
-	/** Original thread priority */
-	int owner_orig_prio;
-
-	SYS_PORT_TRACING_TRACKING_FIELD(k_mutex)
+	struct z_zync_pair zp;
 };
 
-/**
- * @cond INTERNAL_HIDDEN
- */
-#define Z_MUTEX_INITIALIZER(obj) \
-	{ \
-	.wait_q = Z_WAIT_Q_INIT(&obj.wait_q), \
-	.owner = NULL, \
-	.lock_count = 0, \
-	.owner_orig_prio = K_LOWEST_APPLICATION_THREAD_PRIO, \
-	}
+#define K_OBJ_MUTEX K_OBJ_ZYNC_PAIR
 
-/**
- * INTERNAL_HIDDEN @endcond
- */
+#if defined(CONFIG_ZYNC_RECURSIVE) || defined(CONFIG_ZYNC_PRIO_BOOST)
+#define Z_MUTEX_USEROK 0
+#else
+#define Z_MUTEX_USEROK 1
+#endif
+
+#define Z_MUTEX_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(1, true, true, true, 0) }
 
 /**
  * @brief Statically define and initialize a mutex.
@@ -2757,8 +2741,24 @@ struct k_mutex {
  * @param name Name of the mutex.
  */
 #define K_MUTEX_DEFINE(name) \
-	STRUCT_SECTION_ITERABLE(k_mutex, name) = \
-		Z_MUTEX_INITIALIZER(name)
+	struct k_mutex name = { Z_ZYNCP_INITIALIZER(1, true, true, true, 0) }
+
+/** @brief Define a mutex for use from a specific memory domain
+ *
+ * As for K_MUTEX_DEFINE, but places the (fast!) k_zync_atom_t in the
+ * specific app shared memory partition, allowing kernel-free
+ * operation for uncontended use cases.  Note that such a mutex will
+ * still require system call operations if CONFIG_ZYNC_PRIO_BOOST=y or
+ * CONFIG_ZYNC_RECURSIVE=y.
+ *
+ */
+#if !Z_MUTEX_USEROK
+#define K_MUTEX_USER_DEFINE(name, part) K_MUTEX_DEFINE(name)
+#else
+#define K_MUTEX_USER_DEFINE(name, part)					\
+        Z_ZYNCP_USER_DEFINE(_z_##name, part, 1, true, true, true, 1);	\
+        extern struct k_mutex name ALIAS_OF(_z_##name);
+#endif
 
 /**
  * @brief Initialize a mutex.
@@ -2772,8 +2772,18 @@ struct k_mutex {
  * @retval 0 Mutex object created
  *
  */
-__syscall int k_mutex_init(struct k_mutex *mutex);
+static inline int k_mutex_init(struct k_mutex *mutex)
+{
+	struct k_zync_cfg cfg = {
+		.fair = true,
+		.atom_init = 1,
+		IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (.recursive = true,))
+		IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST, (.prio_boost = true,))
+	};
 
+        k_zync_init(&mutex->zp.zync, &mutex->zp.atom, &cfg);
+	return 0;
+}
 
 /**
  * @brief Lock a mutex.
@@ -2782,10 +2792,12 @@ __syscall int k_mutex_init(struct k_mutex *mutex);
  * the calling thread waits until the mutex becomes available or until
  * a timeout occurs.
  *
- * A thread is permitted to lock a mutex it has already locked. The operation
- * completes immediately and the lock count is increased by 1.
+ * If CONFIG_ZYNC_RECURSIVE=y, a thread is permitted to lock a mutex
+ * it has already locked. The operation completes immediately and the
+ * lock count is increased by 1.
  *
- * Mutexes may not be locked in ISRs.
+ * Mutexes may be used in ISRs, though blocking is not possible and
+ * the only valid timeout parameter is K_NO_WAIT.
  *
  * @param mutex Address of the mutex.
  * @param timeout Waiting period to lock the mutex,
@@ -2796,7 +2808,10 @@ __syscall int k_mutex_init(struct k_mutex *mutex);
  * @retval -EBUSY Returned without waiting.
  * @retval -EAGAIN Waiting period timed out.
  */
-__syscall int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout);
+static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
+{
+	return z_pzyncwrap(&mutex->zp, -1, timeout, Z_MUTEX_USEROK);
+}
 
 /**
  * @brief Unlock a mutex.
@@ -2804,12 +2819,9 @@ __syscall int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout);
  * This routine unlocks @a mutex. The mutex must already be locked by the
  * calling thread.
  *
- * The mutex cannot be claimed by another thread until it has been unlocked by
- * the calling thread as many times as it was previously locked by that
- * thread.
- *
- * Mutexes may not be unlocked in ISRs, as mutexes must only be manipulated
- * in thread context due to ownership and priority inheritance semantics.
+ * The mutex cannot be claimed by another thread until it has been
+ * unlocked by the calling thread (if recursive locking is enabled, as
+ * many times as it was previously locked by that thread).
  *
  * @param mutex Address of the mutex.
  *
@@ -2818,7 +2830,15 @@ __syscall int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout);
  * @retval -EINVAL The mutex is not locked
  *
  */
-__syscall int k_mutex_unlock(struct k_mutex *mutex);
+static inline int k_mutex_unlock(struct k_mutex *mutex)
+{
+#ifdef CONFIG_ZYNC_VALIDATE
+	if (Z_MUTEX_USEROK && IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
+		__ASSERT(mutex->zp.atom.val == 0, "mutex not locked");
+	}
+#endif
+	return z_pzyncwrap(&mutex->zp, 1, K_NO_WAIT, Z_MUTEX_USEROK);
+}
 
 /**
  * @}

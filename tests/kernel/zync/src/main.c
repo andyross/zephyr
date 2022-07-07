@@ -16,6 +16,8 @@ K_THREAD_STACK_ARRAY_DEFINE(wait_stacks, NUM_THREADS, STACKSZ);
 
 ZTEST_DMEM atomic_t awoken_count, awaiting_count;
 
+K_MUTEX_USER_DEFINE(wrapped_mutex, ztest_mem_partition);
+
 /* Resets the zync to a test initial-state, returns current config */
 static void reset_zync(struct k_zync_cfg *cfg)
 {
@@ -338,6 +340,20 @@ ZTEST_USER(zync_tests, test_recursive)
 	zassert_equal(mod_atom.val, 1, "recursive zync didn't unlock");
 }
 
+/* Not userspace, whiteboxes mutex */
+ZTEST(zync_tests, test_wrap_mutex)
+{
+	int ret;
+
+	zassert_equal(wrapped_mutex.zp.atom.val, 1, "atom doesn't show unlocked");
+
+	ret = k_mutex_lock(&wrapped_mutex, K_NO_WAIT);
+	zassert_equal(ret, 0, "mutex didn't lock");
+
+	zassert_equal(wrapped_mutex.zp.atom.val, 0, "atom doesn't show locked");
+
+	ret = k_mutex_unlock(&wrapped_mutex);
+	zassert_equal(ret, 0, "mutex didn't unlock");
 }
 
 static void *suite_setup(void)
