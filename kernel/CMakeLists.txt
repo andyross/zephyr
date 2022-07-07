@@ -35,7 +35,6 @@ list(APPEND kernel_files
   idle.c
   mailbox.c
   msg_q.c
-  mutex.c
   pipes.c
   queue.c
   sem.c
