@@ -120,7 +120,7 @@ int z_vrfy_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 			  k_timeout_t timeout)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(condvar, K_OBJ_CONDVAR));
-	Z_OOPS(Z_SYSCALL_OBJ(mutex, K_OBJ_MUTEX));
+	Z_OOPS(Z_SYSCALL_OBJ(mutex, K_OBJ_ZYNC_PAIR));
 	return z_impl_k_condvar_wait(condvar, mutex, timeout);
 }
 #include <syscalls/k_condvar_wait_mrsh.c>
