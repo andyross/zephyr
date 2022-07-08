@@ -43,7 +43,6 @@ list(APPEND kernel_files
   system_work_q.c
   work.c
   sched.c
-  condvar.c
   zync.c
   )
 

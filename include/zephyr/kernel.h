@@ -2844,13 +2844,11 @@ static inline int k_mutex_unlock(struct k_mutex *mutex)
 
 
 struct k_condvar {
-	_wait_q_t wait_q;
+	struct z_zync_pair zp;
 };
 
-#define Z_CONDVAR_INITIALIZER(obj)                                             \
-	{                                                                      \
-		.wait_q = Z_WAIT_Q_INIT(&obj.wait_q),                          \
-	}
+#define Z_CONDVAR_INITIALIZER(obj) \
+	{ Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
 
 /**
  * @defgroup condvar_apis Condition Variables APIs
@@ -2864,7 +2862,13 @@ struct k_condvar {
  * @param condvar pointer to a @p k_condvar structure
  * @retval 0 Condition variable created successfully
  */
-__syscall int k_condvar_init(struct k_condvar *condvar);
+static inline int k_condvar_init(struct k_condvar *condvar)
+{
+	struct k_zync_cfg cfg = { .fair = true };
+
+	k_zync_init(&condvar->zp.zync, &condvar->zp.atom, &cfg);
+	return 0;
+}
 
 /**
  * @brief Signals one thread that is pending on the condition variable
@@ -2872,7 +2876,11 @@ __syscall int k_condvar_init(struct k_condvar *condvar);
  * @param condvar pointer to a @p k_condvar structure
  * @retval 0 On success
  */
-__syscall int k_condvar_signal(struct k_condvar *condvar);
+static inline int k_condvar_signal(struct k_condvar *cv)
+{
+	k_zync(&cv->zp.zync, &cv->zp.atom, &cv->zp.atom, 1, K_NO_WAIT);
+	return 0;
+}
 
 /**
  * @brief Unblock all threads that are pending on the condition
@@ -2881,7 +2889,11 @@ __syscall int k_condvar_signal(struct k_condvar *condvar);
  * @param condvar pointer to a @p k_condvar structure
  * @return An integer with number of woken threads on success
  */
-__syscall int k_condvar_broadcast(struct k_condvar *condvar);
+static inline int k_condvar_broadcast(struct k_condvar *condvar)
+{
+	return k_zync(&condvar->zp.zync, &condvar->zp.atom, &condvar->zp.atom,
+		      K_ZYNC_ATOM_VAL_MAX, K_NO_WAIT);
+}
 
 /**
  * @brief Waits on the condition variable releasing the mutex lock
@@ -2900,8 +2912,19 @@ __syscall int k_condvar_broadcast(struct k_condvar *condvar);
  * @retval 0 On success
  * @retval -EAGAIN Waiting period timed out.
  */
-__syscall int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
-			     k_timeout_t timeout);
+static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
+				 k_timeout_t timeout)
+{
+	int ret = k_zync(&condvar->zp.zync, &condvar->zp.atom, &mutex->zp.atom,
+			 -1, timeout);
+
+	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
+	 * was coded originally, and we actually have a test that
+	 * fails if we pass its K_NO_WAIT here.  Seems surprising...
+	 */
+	(void) k_mutex_lock(mutex, K_FOREVER);
+	return ret;
+}
 
 /**
  * @brief Statically define and initialize a condition variable.
@@ -2913,9 +2936,9 @@ __syscall int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
  *
  * @param name Name of the condition variable.
  */
-#define K_CONDVAR_DEFINE(name)                                                 \
-	STRUCT_SECTION_ITERABLE(k_condvar, name) =                             \
-		Z_CONDVAR_INITIALIZER(name)
+#define K_CONDVAR_DEFINE(name) \
+	struct k_condvar name = K_CONDVAR_INITIALIZER(xxx)
+
 /**
  * @}
  */
