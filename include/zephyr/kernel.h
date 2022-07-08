@@ -2950,23 +2950,13 @@ static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mute
  */
 
 struct k_sem {
-	_wait_q_t wait_q;
-	unsigned int count;
-	unsigned int limit;
-
-	_POLL_EVENT;
-
-	SYS_PORT_TRACING_TRACKING_FIELD(k_sem)
-
+	struct z_zync_pair zp;
 };
 
+#define K_OBJ_SEM K_OBJ_ZYNC_PAIR
+
 #define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
-	{ \
-	.wait_q = Z_WAIT_Q_INIT(&obj.wait_q), \
-	.count = initial_count, \
-	.limit = count_limit, \
-	_POLL_EVENT_OBJ_INIT(obj) \
-	}
+	{ Z_ZYNCP_INITIALIZER(initial_count, true, false, false, count_limit) }
 
 /**
  * INTERNAL_HIDDEN @endcond
@@ -2986,7 +2976,13 @@ struct k_sem {
  * counting purposes.
  *
  */
-#define K_SEM_MAX_LIMIT UINT_MAX
+#define K_SEM_MAX_LIMIT K_ZYNC_ATOM_VAL_MAX
+
+#ifdef CONFIG_ZYNC_MAX_VAL
+#define Z_SEM_USEROK 0
+#else
+#define Z_SEM_USEROK 1
+#endif
 
 /**
  * @brief Initialize a semaphore.
@@ -3003,8 +2999,23 @@ struct k_sem {
  * @retval -EINVAL Invalid values
  *
  */
-__syscall int k_sem_init(struct k_sem *sem, unsigned int initial_count,
-			  unsigned int limit);
+static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
+			     unsigned int limit)
+{
+	struct k_zync_cfg cfg = {
+		.fair = true,
+		.atom_init = initial_count,
+		IF_ENABLED(CONFIG_ZYNC_MAX_VAL, (.max_val = limit,))
+	};
+
+	k_zync_init(&sem->zp.zync, &sem->zp.atom, &cfg);
+
+	if (limit > K_ZYNC_ATOM_VAL_MAX || limit == 0 || initial_count > limit) {
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 /**
  * @brief Take a semaphore.
@@ -3024,7 +3035,16 @@ __syscall int k_sem_init(struct k_sem *sem, unsigned int initial_count,
  * @retval -EAGAIN Waiting period timed out,
  *			or the semaphore was reset during the waiting period.
  */
-__syscall int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
+static inline int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
+{
+	int ret = z_pzyncwrap(&sem->zp, -1, timeout, Z_SEM_USEROK);
+
+	/* Infuriating historical API requirements in test suite */
+	if (ret == -EAGAIN && K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+		ret = -EBUSY;
+	}
+	return ret;
+}
 
 /**
  * @brief Give a semaphore.
@@ -3036,7 +3056,10 @@ __syscall int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
  *
  * @param sem Address of the semaphore.
  */
-__syscall void k_sem_give(struct k_sem *sem);
+static inline void k_sem_give(struct k_sem *sem)
+{
+	z_pzyncwrap(&sem->zp, 1, K_NO_WAIT, Z_SEM_USEROK);
+}
 
 /**
  * @brief Resets a semaphore's count to zero.
@@ -3047,25 +3070,29 @@ __syscall void k_sem_give(struct k_sem *sem);
  *
  * @param sem Address of the semaphore.
  */
-__syscall void k_sem_reset(struct k_sem *sem);
+static inline void k_sem_reset(struct k_sem *sem)
+{
+	k_zync_reset(&sem->zp.zync, &sem->zp.atom);
+}
 
 /**
  * @brief Get a semaphore's count.
  *
  * This routine returns the current count of @a sem.
  *
+ * @note The nature of semaphores is to be used in asynchronous
+ * contexts.  The use of this API is very likely to be subject to
+ * unavoidable race conditions without an exterior layer of locking
+ * provided by the app.  Users tempted by this call should strongly
+ * consider condition variables instead.
+ *
  * @param sem Address of the semaphore.
  *
  * @return Current semaphore count.
  */
-__syscall unsigned int k_sem_count_get(struct k_sem *sem);
-
-/**
- * @internal
- */
-static inline unsigned int z_impl_k_sem_count_get(struct k_sem *sem)
+static inline unsigned int k_sem_count_get(struct k_sem *sem)
 {
-	return sem->count;
+	return z_zync_atom_val(&sem->zp.atom);
 }
 
 /**
@@ -3080,11 +3107,12 @@ static inline unsigned int z_impl_k_sem_count_get(struct k_sem *sem)
  * @param count_limit Maximum permitted semaphore count.
  */
 #define K_SEM_DEFINE(name, initial_count, count_limit) \
-	STRUCT_SECTION_ITERABLE(k_sem, name) = \
-		Z_SEM_INITIALIZER(name, initial_count, count_limit); \
-	BUILD_ASSERT(((count_limit) != 0) && \
-		     ((initial_count) <= (count_limit)) && \
-			 ((count_limit) <= K_SEM_MAX_LIMIT));
+	struct k_sem name = Z_SEM_INITIALIZER(xxx, initial_count, count_limit)
+
+#define K_SEM_USER_DEFINE(name, part, initial_count, count_limit)	\
+        Z_ZYNCP_USER_DEFINE(_z_##name, part, initial_count,		\
+			    true, true, true, count_limit);		\
+        extern struct k_sem name ALIAS_OF(_z_##name);
 
 /** @} */
 
