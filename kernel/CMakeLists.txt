@@ -37,7 +37,6 @@ list(APPEND kernel_files
   msg_q.c
   pipes.c
   queue.c
-  sem.c
   stack.c
   system_work_q.c
   work.c
