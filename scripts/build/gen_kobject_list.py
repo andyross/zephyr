@@ -122,6 +122,7 @@ kobjects = OrderedDict([
 # compiler-provided typesafety)
 kobj_aliases = {
     "k_mutex" : "z_zync_pair",
+    "k_sem" : "z_zync_pair",
 }
 
 def kobject_to_enum(kobj):

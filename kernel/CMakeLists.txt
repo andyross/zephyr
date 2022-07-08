@@ -38,7 +38,6 @@ list(APPEND kernel_files
   mutex.c
   pipes.c
   queue.c
-  sem.c
   stack.c
   system_work_q.c
   work.c
