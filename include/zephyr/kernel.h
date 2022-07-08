@@ -2939,7 +2939,7 @@ static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mute
  * @param name Name of the condition variable.
  */
 #define K_CONDVAR_DEFINE(name) \
-	struct k_condvar name = K_CONDVAR_INITIALIZER(xxx)
+	struct k_condvar name = Z_CONDVAR_INITIALIZER(xxx)
 
 /**
  * @}
