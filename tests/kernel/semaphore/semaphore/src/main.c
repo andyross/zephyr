@@ -95,6 +95,7 @@ struct k_thread tdata;
 void sem_give_task(void *p1, void *p2, void *p3)
 {
 	k_sem_give((struct k_sem *)p1);
+	k_sleep(K_TICKS(1));
 }
 
 void sem_reset_take_task(void *p1, void *p2, void *p3)
@@ -116,6 +117,7 @@ static void tsema_thread_thread(struct k_sem *psem)
 				      K_PRIO_PREEMPT(0),
 				      K_USER | K_INHERIT_PERMS, K_NO_WAIT);
 
+	k_sleep(K_TICKS(1));
 	expect_k_sem_take_nomsg(psem, K_FOREVER, 0);
 
 	/*clean the spawn thread avoid side effect in next TC*/
@@ -579,12 +581,19 @@ void test_sem_take_timeout_isr(void)
 	 * thread (which is at a lower priority) will cause simple_sem
 	 * to be signalled, thus waking this task.
 	 */
+	k_sem_reset(&simple_sem);
 
 	k_thread_create(&sem_tid_1, stack_1, STACK_SIZE,
 			sem_take_timeout_isr_helper, NULL, NULL, NULL,
 			K_PRIO_PREEMPT(0), 0, K_NO_WAIT);
 
-	k_sem_reset(&simple_sem);
+	if (IS_ENABLED(CONFIG_SMP)) {
+		/* This only works reliably on 1 core where that
+		 * thread won't run yet.  Give it a bit of time on SMP
+		 * to get the semaphore into the right state
+		 */
+		k_sleep(K_TICKS(2));
+	}
 
 	expect_k_sem_take_nomsg(&simple_sem, SEM_TIMEOUT, 0);
 
