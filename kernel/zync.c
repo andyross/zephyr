@@ -95,7 +95,7 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 {
 	k_spinlock_key_t key = k_spin_lock(&zync->lock);
 	bool resched = false, nowait, must_pend;
-	int32_t delta = 0, delta2 = 0, val1 = 0, pendret = 0, woken;
+	int32_t delta = 0, delta2 = 0, val0 = 0, val1 = 0, pendret = 0, woken;
 
 #ifdef CONFIG_ZYNC_RECURSIVE
 	if (zync->cfg.recursive && mod > 0) {
@@ -114,8 +114,9 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 #endif
 
 	K_ZYNC_ATOM_SET(mod_atom) {
-		val1 = modclamp(zync, old_atom.val + mod);
-		delta = val1 - old_atom.val;
+		val0 = old_atom.val;
+		val1 = modclamp(zync, val0 + mod);
+		delta = val1 - val0;
 		new_atom.val = (mod_atom == reset_atom) ? 0 : val1;
 		new_atom.waiters = mod < 0 && delta != mod;
 	}
@@ -134,6 +135,13 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	if (delta > 0) {
 		prio_boost_reset(zync);
 	}
+
+#ifdef CONFIG_POLL
+	if (delta > 0 && val0 == 0) {
+		z_handle_obj_poll_events(&zync->poll_events, K_POLL_STATE_ZYNC);
+	}
+	zync->pollable = (val1 != 0);
+#endif
 
 	if (must_pend || delta > 0) {
 		Z_WAIT_Q_LAZY_INIT(&zync->waiters);
@@ -222,7 +230,7 @@ int32_t z_impl_z_pzync(struct z_zync_pair *mod_z,
  * existing API.  Returns true if the validated object is a
  * z_zync_pair.
  */
-static bool vrfy_zync(void *p, bool init)
+bool z_vrfy_zync(void *p, bool init)
 {
 	int iarg = init ? _OBJ_INIT_ANY : _OBJ_INIT_TRUE;
 
@@ -249,7 +257,7 @@ static void vrfy_atom(k_zync_atom_t *a)
 
 void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 {
-        vrfy_zync(zync, false);
+        z_vrfy_zync(zync, false);
         Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
 	z_impl_k_zync_set_config(zync, cfg);
 }
@@ -257,7 +265,7 @@ void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 
 void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 {
-        vrfy_zync(zync, false);
+        z_vrfy_zync(zync, false);
         Z_OOPS(Z_SYSCALL_MEMORY_WRITE(cfg, sizeof(*cfg)));
 	z_impl_k_zync_get_config(zync, cfg);
 }
@@ -266,7 +274,7 @@ void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 			struct k_zync_cfg *cfg)
 {
-        bool pair = vrfy_zync(zync, true);
+        bool pair = z_vrfy_zync(zync, true);
 	struct z_zync_pair *zp = CONTAINER_OF(zync, struct z_zync_pair, zync);
 
 	if (pair) {
@@ -283,7 +291,7 @@ void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
 {
-        vrfy_zync(zync, false);
+        z_vrfy_zync(zync, false);
         vrfy_atom(mod_atom);
 	if (reset_atom != NULL) {
 		vrfy_atom(reset_atom);
@@ -294,7 +302,7 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 
 void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 {
-	vrfy_zync(zync, true);
+	z_vrfy_zync(zync, true);
         vrfy_atom(atom);
 	z_impl_k_zync_reset(zync, atom);
 }
