@@ -62,12 +62,6 @@ void k_poll_event_init(struct k_poll_event *event, uint32_t type,
 static inline bool is_condition_met(struct k_poll_event *event, uint32_t *state)
 {
 	switch (event->type) {
-	case K_POLL_TYPE_SEM_AVAILABLE:
-		if (k_sem_count_get(event->sem) > 0U) {
-			*state = K_POLL_STATE_SEM_AVAILABLE;
-			return true;
-		}
-		break;
 	case K_POLL_TYPE_DATA_AVAILABLE:
 		if (!k_queue_is_empty(event->queue)) {
 			*state = K_POLL_STATE_FIFO_DATA_AVAILABLE;
@@ -93,6 +87,15 @@ static inline bool is_condition_met(struct k_poll_event *event, uint32_t *state)
 			return true;
 		}
 #endif
+	case K_POLL_TYPE_SEM_AVAILABLE:
+	case K_POLL_TYPE_ZYNC:
+		if (event->zync->poll_events.head == NULL) {
+			sys_dlist_init(&event->zync->poll_events);
+		}
+		if (event->zync->pollable) {
+			*state = K_POLL_STATE_ZYNC;
+			return true;
+		}
 	case K_POLL_TYPE_IGNORE:
 		break;
 	default:
@@ -137,10 +140,6 @@ static inline void register_event(struct k_poll_event *event,
 				 struct z_poller *poller)
 {
 	switch (event->type) {
-	case K_POLL_TYPE_SEM_AVAILABLE:
-		__ASSERT(event->sem != NULL, "invalid semaphore\n");
-		add_event(&event->sem->poll_events, event, poller);
-		break;
 	case K_POLL_TYPE_DATA_AVAILABLE:
 		__ASSERT(event->queue != NULL, "invalid queue\n");
 		add_event(&event->queue->poll_events, event, poller);
@@ -159,6 +158,10 @@ static inline void register_event(struct k_poll_event *event,
 		add_event(&event->pipe->poll_events, event, poller);
 		break;
 #endif
+	case K_POLL_TYPE_SEM_AVAILABLE:
+	case K_POLL_TYPE_ZYNC:
+		__ASSERT(event->zync != NULL, "invalid zync\n");
+		add_event(&event->zync->poll_events, event, poller);
 	case K_POLL_TYPE_IGNORE:
 		/* nothing to do */
 		break;
@@ -200,6 +203,10 @@ static inline void clear_event_registration(struct k_poll_event *event)
 		remove_event = true;
 		break;
 #endif
+	case K_POLL_TYPE_ZYNC:
+		__ASSERT(event->msgq != NULL, "invalid zync\n");
+		remove_event = true;
+		break;
 	case K_POLL_TYPE_IGNORE:
 		/* nothing to do */
 		break;
@@ -407,9 +414,6 @@ static inline int z_vrfy_k_poll(struct k_poll_event *events,
 		case K_POLL_TYPE_SIGNAL:
 			Z_OOPS(Z_SYSCALL_OBJ(e->signal, K_OBJ_POLL_SIGNAL));
 			break;
-		case K_POLL_TYPE_SEM_AVAILABLE:
-			Z_OOPS(Z_SYSCALL_OBJ(e->sem, K_OBJ_SEM));
-			break;
 		case K_POLL_TYPE_DATA_AVAILABLE:
 			Z_OOPS(Z_SYSCALL_OBJ(e->queue, K_OBJ_QUEUE));
 			break;
@@ -421,6 +425,10 @@ static inline int z_vrfy_k_poll(struct k_poll_event *events,
 			Z_OOPS(Z_SYSCALL_OBJ(e->pipe, K_OBJ_PIPE));
 			break;
 #endif
+		case K_POLL_TYPE_SEM_AVAILABLE:
+		case K_POLL_TYPE_ZYNC:
+			z_vrfy_zync(e->zync, false);
+			break;
 		default:
 			ret = -EINVAL;
 			goto out_free;
@@ -470,6 +478,10 @@ static int signal_poll_event(struct k_poll_event *event, uint32_t state)
 void z_handle_obj_poll_events(sys_dlist_t *events, uint32_t state)
 {
 	struct k_poll_event *poll_event;
+
+	if (events->head == NULL) {
+		sys_dlist_init(events);
+	}
 
 	poll_event = (struct k_poll_event *)sys_dlist_get(events);
 	if (poll_event != NULL) {

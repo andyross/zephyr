@@ -417,7 +417,7 @@ void __retarget_lock_init(_LOCK_T *lock)
 #ifndef CONFIG_USERSPACE
 	*lock = malloc(sizeof(struct k_sem));
 #else
-	*lock = k_object_alloc(K_OBJ_SEM);
+	*lock = k_object_alloc(K_OBJ_ZYNC);
 #endif /* !CONFIG_USERSPACE */
 	__ASSERT(*lock != NULL, "non-recursive lock allocation failed");
 
@@ -433,7 +433,7 @@ void __retarget_lock_init_recursive(_LOCK_T *lock)
 #ifndef CONFIG_USERSPACE
 	*lock = malloc(sizeof(struct k_mutex));
 #else
-	*lock = k_object_alloc(K_OBJ_MUTEX);
+	*lock = k_object_alloc(K_OBJ_ZYNC);
 #endif /* !CONFIG_USERSPACE */
 	__ASSERT(*lock != NULL, "recursive lock allocation failed");
 

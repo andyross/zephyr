@@ -52,6 +52,8 @@ struct k_zync {
 	struct k_zync_cfg cfg;
 	IF_ENABLED(Z_ZYNC_OWNER, (struct k_thread *owner;))
 	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (uint32_t rec_count;))
+	IF_ENABLED(CONFIG_POLL, (sys_dlist_t poll_events;))
+	IF_ENABLED(CONFIG_POLL, (bool pollable;))
 };
 
 #define Z_ZYNC_MVCLAMP(v) ((v) == 0 ? K_ZYNC_ATOM_VAL_MAX \
@@ -334,6 +336,8 @@ static inline int z_pzyncwrap(struct z_zync_pair *zp, int32_t mod,
 
 	return ret == (mod < 0 ? -mod : mod) ? 0 : ret;
 }
+
+bool z_vrfy_zync(void *p, bool init);
 
 #include <syscalls/zync.h>
 

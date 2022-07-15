@@ -2976,7 +2976,7 @@ struct k_sem {
  */
 #define K_SEM_MAX_LIMIT K_ZYNC_ATOM_VAL_MAX
 
-#ifdef CONFIG_ZYNC_MAX_VAL
+#if defined(CONFIG_ZYNC_MAX_VAL) || defined(CONFIG_POLL)
 #define Z_SEM_USEROK 0
 #else
 #define Z_SEM_USEROK 1
@@ -5381,6 +5381,9 @@ enum _poll_types_bits {
 	/* pipe data availability */
 	_POLL_TYPE_PIPE_DATA_AVAILABLE,
 
+	/* zync transitions from 0 to any positive value */
+	_POLL_TYPE_ZYNC,
+
 	_POLL_NUM_TYPES
 };
 
@@ -5408,6 +5411,9 @@ enum _poll_states_bits {
 
 	/* data is available to read from a pipe */
 	_POLL_STATE_PIPE_DATA_AVAILABLE,
+
+	/* zync has transitioned to positive value */
+	_POLL_STATE_ZYNC,
 
 	_POLL_NUM_STATES
 };
@@ -5441,6 +5447,7 @@ enum _poll_states_bits {
 #define K_POLL_TYPE_FIFO_DATA_AVAILABLE K_POLL_TYPE_DATA_AVAILABLE
 #define K_POLL_TYPE_MSGQ_DATA_AVAILABLE Z_POLL_TYPE_BIT(_POLL_TYPE_MSGQ_DATA_AVAILABLE)
 #define K_POLL_TYPE_PIPE_DATA_AVAILABLE Z_POLL_TYPE_BIT(_POLL_TYPE_PIPE_DATA_AVAILABLE)
+#define K_POLL_TYPE_ZYNC Z_POLL_TYPE_BIT(_POLL_TYPE_ZYNC)
 
 /* public - polling modes */
 enum k_poll_modes {
@@ -5459,6 +5466,7 @@ enum k_poll_modes {
 #define K_POLL_STATE_MSGQ_DATA_AVAILABLE Z_POLL_STATE_BIT(_POLL_STATE_MSGQ_DATA_AVAILABLE)
 #define K_POLL_STATE_PIPE_DATA_AVAILABLE Z_POLL_STATE_BIT(_POLL_STATE_PIPE_DATA_AVAILABLE)
 #define K_POLL_STATE_CANCELLED Z_POLL_STATE_BIT(_POLL_STATE_CANCELLED)
+#define K_POLL_STATE_ZYNC Z_POLL_STATE_BIT(_POLL_STATE_ZYNC)
 
 /* public - poll signal object */
 struct k_poll_signal {
@@ -5518,6 +5526,7 @@ struct k_poll_event {
 #ifdef CONFIG_PIPES
 		struct k_pipe *pipe;
 #endif
+		struct k_zync *zync;
 	};
 };
 
