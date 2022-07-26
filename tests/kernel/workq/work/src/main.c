@@ -1292,12 +1292,7 @@ static bool try_queue_no_yield(struct k_work_q *wq)
 	zassert_equal(k_work_is_pending(&work), false, NULL);
 	zassert_equal(k_work_delayable_is_pending(&dwork), false, NULL);
 
-	/* The first give unblocked this thread; we need to consume
-	 * the give from the second work task.
-	 */
-	zassert_equal(k_sem_take(&sync_sem, K_NO_WAIT), 0, NULL);
-
-	zassert_equal(k_sem_take(&sync_sem, K_NO_WAIT), -EBUSY, NULL);
+	k_sem_reset(&sync_sem);
 
 	return is_high;
 }
