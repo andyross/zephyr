@@ -104,8 +104,9 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 				__ASSERT(0, "unlocking unowned recursive zync");
 			}
 			/* Weird returns are from old k_mutex */
+			pendret = zync->owner == NULL ? -EINVAL : -EPERM;
 			k_spin_unlock(&zync->lock, key);
-			return zync->owner == NULL ? -EINVAL : -EPERM;
+			return pendret;
 		}
 		delta = MIN(mod, zync->rec_count);
 		zync->rec_count -= delta;
@@ -132,6 +133,12 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	}
 #endif
 
+#ifdef Z_ZYNC_OWNER
+	if (val1 > 0) {
+		zync->owner = NULL;
+	}
+#endif
+
 	if (delta > 0) {
 		prio_boost_reset(zync);
 	}
@@ -143,10 +150,7 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	zync->pollable = (val1 != 0);
 #endif
 
-	if (must_pend || delta > 0) {
-		Z_WAIT_Q_LAZY_INIT(&zync->waiters);
-	}
-
+	Z_WAIT_Q_LAZY_INIT(&zync->waiters);
 	for (woken = 0; woken < delta; woken++) {
 		if (!z_sched_wake(&zync->waiters, 0, NULL)) {
 			break;
