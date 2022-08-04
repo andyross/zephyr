@@ -7,6 +7,7 @@
 
 #define NUM_THREADS 4
 #define STACKSZ (512 + CONFIG_TEST_EXTRA_STACK_SIZE)
+#define WAIT_THREAD_PRIO 0
 
 struct k_zync zync = K_ZYNC_INITIALIZER(0, true, false, false, 0);
 ZTEST_DMEM k_zync_atom_t mod_atom, reset_atom;
@@ -49,7 +50,7 @@ static void spawn_wait_thread(int id, bool start)
 	k_thread_create(&wait_threads[id], wait_stacks[id],
 			K_THREAD_STACK_SIZEOF(wait_stacks[id]),
 			wait_thread_fn, (void *)(long)id, NULL, NULL,
-			0, K_USER | K_INHERIT_PERMS,
+			WAIT_THREAD_PRIO, K_USER | K_INHERIT_PERMS,
 			start ? K_NO_WAIT : K_FOREVER);
 }
 
@@ -74,7 +75,7 @@ ZTEST_USER(zync_tests, test_zync_downfail)
 
 	ret = k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
 
-	zassert_true(ret == -EAGAIN, "wrong return value: %d", ret);
+	zassert_true(ret == -EAGAIN, "wrong return value");
 	zassert_true(mod_atom.val == 0, "atom changed unexpectedly");
 
 	k_usleep(1); /* tick align */
@@ -169,12 +170,12 @@ ZTEST_USER(zync_tests, test_reset_atom)
 {
 	int32_t ret;
 
-	mod_atom.val = 0;
+	reset_zync(NULL);
 	reset_atom.val = 2;
 
 	/* reset_atom != mod_atom */
 	ret = k_zync(&zync, &mod_atom, &reset_atom, 1, K_NO_WAIT);
-	zassert_equal(ret, 1, "wrong return value");
+	zassert_equal(ret, 1, "wrong return value: %d", ret);
 	zassert_equal(reset_atom.val, 1, "wrong reset atom value");
 	zassert_equal(mod_atom.val, 1, "atom value didn't increment");
 
@@ -234,6 +235,10 @@ ZTEST(zync_tests_1cpu, test_fair)
 
 	struct k_zync_cfg cfg;
 
+	/* Make sure we're lower priority and preemptible */
+	k_thread_priority_set(k_current_get(), WAIT_THREAD_PRIO + 1);
+	__ASSERT_NO_MSG(k_thread_priority_get(k_current_get()) >= 0);
+
 	for (int pass = 0; pass < 2; pass++) {
 		bool is_fair = pass == 0;
 
@@ -244,11 +249,6 @@ ZTEST(zync_tests_1cpu, test_fair)
 
 		awaiting_count = awoken_count = 0;
 		spawn_wait_thread(0, true);
-
-		/* Make sure we're lower priority and preemptible */
-		k_thread_priority_set(k_current_get(),
-				      1 + k_thread_priority_get(&wait_threads[0]));
-		__ASSERT_NO_MSG(k_thread_priority_get(k_current_get()) >= 0);
 
 		/* Make sure it blocked */
 		zassert_equal(awoken_count, 0, "thread woke up");
@@ -370,5 +370,5 @@ static void *suite_setup(void)
 
 ZTEST_SUITE(zync_tests, NULL, suite_setup, NULL, NULL, NULL);
 
-ZTEST_SUITE(zync_tests_1cpu, NULL, NULL,
+ZTEST_SUITE(zync_tests_1cpu, NULL, suite_setup,
 	    ztest_simple_1cpu_before, ztest_simple_1cpu_after, NULL);
