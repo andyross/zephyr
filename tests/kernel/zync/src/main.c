@@ -1,9 +1,9 @@
 /* Copyright (c) 2022 Google LLC.
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <ztest.h>
-#include <zephyr.h>
-#include <sys/util.h>
+#include <zephyr/ztest.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/sys/util.h>
 
 #define NUM_THREADS 4
 #define STACKSZ (512 + CONFIG_TEST_EXTRA_STACK_SIZE)
