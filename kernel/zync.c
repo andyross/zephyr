@@ -214,6 +214,9 @@ void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 		z_sched_wake(&zync->waiters, -EAGAIN, NULL);
 	}
 
+	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (zync->rec_count = 0));
+	IF_ENABLED(Z_ZYNC_OWNER,          (zync->owner = NULL));
+
 	k_spin_unlock(&zync->lock, key);
 }
 
