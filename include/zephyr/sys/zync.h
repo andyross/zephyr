@@ -263,7 +263,6 @@ static inline uint32_t z_impl_z_zync_atom_val(k_zync_atom_t *atom)
 enum z_zync_ptype {
 	Z_ZYNC_PAIR, /* atom and zync adjacent in memory */
 	Z_ZYNC_ZREF, /* atom followed by pointer to k_zync */
-	Z_ZYNC_PREF  /* unused atom + pointer to (kernel) z_zync_pair */
 };
 
 struct z_zync_pair {
@@ -308,11 +307,6 @@ static inline int z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 	if (!atom_ok) {
 		/* pair is kernel-space or requires kernel features */
 		return z_pzync(zp, mod, timeout);
-	}
-
-	if (zp->atom.ptype == Z_ZYNC_PREF) {
-		/* PREF: atom ignored, reference to kernel k_zync_pair */
-		return z_pzync(zp->pref, mod, timeout);
 	}
 
 	if (k_zync_try_mod(&zp->atom, mod)) {
