@@ -154,6 +154,18 @@ config UBSAN
 	  architecture, and requires a recent-ish compiler with the
 	  ``-fsanitize=undefined`` command line option.
 
+config MSAN
+	bool "Build with memory sanitizer"
+	depends on ARCH_POSIX
+	help
+	  Builds Zephyr with the MemorySanitizer enabled.  Works only
+	  on the native_posix architecutre currently, and only with
+	  host compilers recent enough to support the feature.  With
+	  current toolchains, this requires x86_64
+	  (i.e. native_posix_64 only) and cannot be used in tandem
+	  with CONFIG_ASAN.  You must choose one or the other (but can
+	  combine it with CONFIG_UBSAN if you like)
+
 config STACK_USAGE
 	bool "Generate stack usage information"
 	help
