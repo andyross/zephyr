@@ -287,6 +287,7 @@ void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 }
 #include <syscalls/k_zync_reset_mrsh.c>
 
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 int32_t z_vrfy_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
         Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
@@ -300,5 +301,6 @@ uint32_t z_vrfy_z_zync_atom_val(struct k_zync *zync)
 	return z_impl_z_zync_atom_val(zync);
 }
 #include <syscalls/z_zync_atom_val_mrsh.c>
+#endif
 
 #endif /* CONFIG_USERSPACE */

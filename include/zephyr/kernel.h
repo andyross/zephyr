@@ -2823,7 +2823,7 @@ static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 static inline int k_mutex_unlock(struct k_mutex *mutex)
 {
 #ifdef CONFIG_ZYNC_VALIDATE
-	__ASSERT(mutex->zp.atom.val == 0, "mutex not locked");
+	__ASSERT(Z_PAIR_ATOM(&mutex->zp)->val == 0, "mutex not locked");
 #endif
 	return z_pzyncmod(&mutex->zp, 1, K_NO_WAIT);
 }

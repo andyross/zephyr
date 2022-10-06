@@ -43,8 +43,7 @@ int z_impl_z_sys_mutex_kernel_unlock(struct sys_mutex *mutex)
 {
 	struct k_mutex *kernel_mutex = get_k_mutex(mutex);
 
-	if (kernel_mutex == NULL ||
-	    z_zync_atom_val(Z_PAIR_ZYNC(&kernel_mutex->zp)) == 0) {
+	if (kernel_mutex == NULL) {
 		return -EINVAL;
 	}
 

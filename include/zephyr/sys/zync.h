@@ -252,8 +252,6 @@ __syscall void k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom);
 __syscall int32_t k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 			 k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t to);
 
-__syscall uint32_t z_zync_atom_val(struct k_zync *zync);
-
 /* In practice, zyncs and atoms are always used togather; z_zync_pair
  * is an internal utility to manage this arrangement for the benefit
  * of higher level APIs like k_sem/k_mutex.
@@ -264,6 +262,8 @@ __syscall uint32_t z_zync_atom_val(struct k_zync *zync);
 struct z_zync_pair {
 	struct k_zync zync;
 };
+
+__syscall uint32_t z_zync_atom_val(struct k_zync *zync);
 
 #define Z_PAIR_ZYNC(zp) (&(zp)->zync)
 #define Z_PAIR_ATOM(zp) (&(zp)->zync.atom)

@@ -357,12 +357,14 @@ ZTEST(zync_tests, test_wrap_mutex)
 {
 	int ret;
 
-	zassert_equal(wrapped_mutex.zp.atom.val, 1, "atom doesn't show unlocked");
+	zassert_equal(Z_PAIR_ATOM(&wrapped_mutex.zp)->val, 1,
+		      "atom doesn't show unlocked");
 
 	ret = k_mutex_lock(&wrapped_mutex, K_NO_WAIT);
 	zassert_equal(ret, 0, "mutex didn't lock");
 
-	zassert_equal(wrapped_mutex.zp.atom.val, 0, "atom doesn't show locked");
+	zassert_equal(Z_PAIR_ATOM(&wrapped_mutex.zp)->val, 0,
+		      "atom doesn't show locked");
 
 	ret = k_mutex_unlock(&wrapped_mutex);
 	zassert_equal(ret, 0, "mutex didn't unlock");
