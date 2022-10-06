@@ -2719,10 +2719,11 @@ struct k_mutex {
 	struct z_zync_pair zp;
 };
 
-#define K_OBJ_MUTEX K_OBJ_ZYNC_PAIR
+#define K_OBJ_MUTEX K_OBJ_ZYNC
 
-// FIXME
-//#define Z_MUTEX_INITIALIZER(obj)
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#define Z_MUTEX_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(1, true, true, true, 1) }
+#endif
 
 /**
  * @brief Statically define and initialize a mutex.
@@ -2734,7 +2735,7 @@ struct k_mutex {
  * @param name Name of the mutex.
  */
 #define K_MUTEX_DEFINE(name)						\
-	Z_ZYNCP_DEFINE(_z_##name, 1, true, true, true, 1);	\
+	Z_ZYNCP_DEFINE(_z_##name, 1, true, true, true, 1);		\
 	extern struct k_mutex name ALIAS_OF(_z_##name);
 
 /** @brief Define a mutex for use from a specific memory domain
@@ -2835,8 +2836,9 @@ struct k_condvar {
 	struct z_zync_pair zp;
 };
 
-// FIXME
-//#define Z_CONDVAR_INITIALIZER(obj)
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#define Z_CONDVAR_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
+#endif
 
 /**
  * @defgroup condvar_apis Condition Variables APIs
@@ -2953,10 +2955,12 @@ struct k_sem {
 	struct z_zync_pair zp;
 };
 
-#define K_OBJ_SEM K_OBJ_ZYNC_PAIR
+#define K_OBJ_SEM K_OBJ_ZYNC
 
-// FIXME
-//#define Z_SEM_INITIALIZER(obj, initial_count, count_limit) 
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
+	{ Z_ZYNCP_INITIALIZER(initial_count, false, false, false, count_limit) }
+#endif
 
 /**
  * INTERNAL_HIDDEN @endcond

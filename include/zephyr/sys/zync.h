@@ -270,7 +270,7 @@ struct z_zync_pair {
 
 #define Z_ZYNCP_INITIALIZER(initv, fair, rec, pboost, maxv) {		\
 	.zync = K_ZYNC_INITIALIZER(initv, fair, rec, pboost, maxv),	\
-	.zync.atom = { .val = (initv) },		     		\
+	.zync.atom = { .val = (initv) }}				\
 
 #define Z_ZYNCP_DEFINE(name, initv, fair, rec, prio_boost, maxv)	\
 	struct z_zync_pair name = Z_ZYNCP_INITIALIZER((initv), (fair), (rec), \

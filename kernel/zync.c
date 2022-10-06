@@ -55,6 +55,7 @@ static inline int32_t modclamp(struct k_zync *zync, int32_t mod)
 	int32_t max = K_ZYNC_ATOM_VAL_MAX;
 
 #ifdef CONFIG_ZYNC_MAX_VAL
+	// FIXME: don't check vs. 0 at runtime, clamp when set!
 	if (zync->cfg.max_val != 0) {
 		max = MIN(max, zync->cfg.max_val);
 	}
@@ -233,7 +234,7 @@ int32_t z_impl_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 
 uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 {
-	return zync->atom->val;
+	return zync->atom.val;
 }
 #endif
 
@@ -241,7 +242,7 @@ uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 
 void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 {
-	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC);
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
         Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
 	z_impl_k_zync_set_config(zync, cfg);
 }
@@ -249,7 +250,7 @@ void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 
 void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 {
-	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC);
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
         Z_OOPS(Z_SYSCALL_MEMORY_WRITE(cfg, sizeof(*cfg)));
 	z_impl_k_zync_get_config(zync, cfg);
 }
@@ -270,9 +271,9 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
-	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(atom, sizeof(*atom)));
+	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(mod_atom, sizeof(*mod_atom)));
 	if (reset_atom != NULL) {
-		Z_OOPS(Z_SYSCALL_MEMORY_WRITE(reste_atom, sizeof(*reset_atom)));
+		Z_OOPS(Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom)));
 	}
 	return z_impl_k_zync(zync, mod_atom, reset_atom, mod, timeout);
 }
