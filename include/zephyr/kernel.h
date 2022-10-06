@@ -2721,13 +2721,9 @@ struct k_mutex {
 
 #define K_OBJ_MUTEX K_OBJ_ZYNC_PAIR
 
-#if defined(CONFIG_ZYNC_RECURSIVE) || defined(CONFIG_ZYNC_PRIO_BOOST)
-#define Z_MUTEX_USEROK 0
-#else
-#define Z_MUTEX_USEROK 1
-#endif
-
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 #define Z_MUTEX_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(1, true, true, true, 0) }
+#endif
 
 /**
  * @brief Statically define and initialize a mutex.
@@ -2738,8 +2734,9 @@ struct k_mutex {
  *
  * @param name Name of the mutex.
  */
-#define K_MUTEX_DEFINE(name) \
-	struct k_mutex name = { Z_ZYNCP_INITIALIZER(1, true, true, true, 0) }
+#define K_MUTEX_DEFINE(name)						\
+	Z_ZYNCP_DEFINE(_z_##name, 1, true, true, true, 1);	\
+	extern struct k_mutex name ALIAS_OF(_z_##name);
 
 /** @brief Define a mutex for use from a specific memory domain
  *
@@ -2748,15 +2745,10 @@ struct k_mutex {
  * operation for uncontended use cases.  Note that such a mutex will
  * still require system call operations if CONFIG_ZYNC_PRIO_BOOST=y or
  * CONFIG_ZYNC_RECURSIVE=y.
- *
  */
-#if !Z_MUTEX_USEROK
-#define K_MUTEX_USER_DEFINE(name, part) K_MUTEX_DEFINE(name)
-#else
-#define K_MUTEX_USER_DEFINE(name, part)					\
-        Z_ZYNCP_USER_DEFINE(_z_##name, part, 1, true, true, true, 1);	\
-        extern struct k_mutex name ALIAS_OF(_z_##name);
-#endif
+#define K_MUTEX_USER_DEFINE(name, part) K_MUTEX_DEFINE(name)		\
+	     Z_ZYNCP_USER_DEFINE(_zm_##name, part, 1, true, true, true, 1); \
+	     extern struct k_mutex name ALIAS_OF(_zm_##name);
 
 /**
  * @brief Initialize a mutex.
@@ -2808,7 +2800,7 @@ static inline int k_mutex_init(struct k_mutex *mutex)
  */
 static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 {
-	return z_pzyncwrap(&mutex->zp, -1, timeout, Z_MUTEX_USEROK);
+	return z_pzyncmod(&mutex->zp, -1, timeout);
 }
 
 /**
@@ -2831,11 +2823,9 @@ static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 static inline int k_mutex_unlock(struct k_mutex *mutex)
 {
 #ifdef CONFIG_ZYNC_VALIDATE
-	if (Z_MUTEX_USEROK && IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
-		__ASSERT(mutex->zp.atom.val == 0, "mutex not locked");
-	}
+	__ASSERT(mutex->zp.atom.val == 0, "mutex not locked");
 #endif
-	return z_pzyncwrap(&mutex->zp, 1, K_NO_WAIT, Z_MUTEX_USEROK);
+	return z_pzyncmod(&mutex->zp, 1, K_NO_WAIT);
 }
 
 /**
@@ -2847,8 +2837,10 @@ struct k_condvar {
 	struct z_zync_pair zp;
 };
 
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 #define Z_CONDVAR_INITIALIZER(obj) \
 	{ Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
+#endif
 
 /**
  * @defgroup condvar_apis Condition Variables APIs
@@ -2866,7 +2858,7 @@ static inline int k_condvar_init(struct k_condvar *condvar)
 {
 	struct k_zync_cfg cfg = { .fair = true };
 
-	k_zync_init(&condvar->zp.zync, &condvar->zp.atom, &cfg);
+	k_zync_init(condvar->zp.zync, &condvar->zp.atom, &cfg);
 	return 0;
 }
 
@@ -2878,7 +2870,7 @@ static inline int k_condvar_init(struct k_condvar *condvar)
  */
 static inline int k_condvar_signal(struct k_condvar *cv)
 {
-	k_zync(&cv->zp.zync, &cv->zp.atom, &cv->zp.atom, 1, K_NO_WAIT);
+	k_zync(cv->zp.zync, &cv->zp.atom, &cv->zp.atom, 1, K_NO_WAIT);
 	return 0;
 }
 
@@ -2891,7 +2883,7 @@ static inline int k_condvar_signal(struct k_condvar *cv)
  */
 static inline int k_condvar_broadcast(struct k_condvar *condvar)
 {
-	return k_zync(&condvar->zp.zync, &condvar->zp.atom, &condvar->zp.atom,
+	return k_zync(condvar->zp.zync, &condvar->zp.atom, &condvar->zp.atom,
 		      K_ZYNC_ATOM_VAL_MAX, K_NO_WAIT);
 }
 
@@ -2915,12 +2907,12 @@ static inline int k_condvar_broadcast(struct k_condvar *condvar)
 static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 				 k_timeout_t timeout)
 {
-	int ret = k_zync(&condvar->zp.zync, &condvar->zp.atom, &mutex->zp.atom,
+	int ret = k_zync(condvar->zp.zync, &condvar->zp.atom, &mutex->zp.atom,
 			 -1, timeout);
 
 	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
 	 * was coded originally, and we actually have a test that
-	 * fails if we pass its K_NO_WAIT here.  Seems surprising...
+	 * fails if we pass it K_NO_WAIT here.  Seems surprising...
 	 */
 	(void) k_mutex_lock(mutex, K_FOREVER);
 	return ret;
@@ -2936,8 +2928,21 @@ static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mute
  *
  * @param name Name of the condition variable.
  */
-#define K_CONDVAR_DEFINE(name) \
-	struct k_condvar name = K_CONDVAR_INITIALIZER(xxx)
+#define K_CONDVAR_DEFINE(name)					\
+	Z_ZYNCP_DEFINE(_zc_##name, 0, true, false, false, 0)	\
+	extern struct k_condvar name ALIAS_OF(_zc_##name);
+
+/** @brief Define a condition variable for use from a specific memory domain
+ *
+ * As for K_CONDVAR_DEFINE, but places the (fast!) k_zync_atom_t in
+ * the specific app shared memory partition, allowing kernel-free
+ * operation for uncontended use cases.  Note that such a condvar will
+ * still require system call operations if CONFIG_ZYNC_PRIO_BOOST=y or
+ * CONFIG_ZYNC_RECURSIVE=y.
+ */
+#define K_CONDVAR_USER_DEFINE(name, part)				\
+	Z_ZYNCP_USER_DEFINE(_zc_##name, part, 0, true, false, false, 0)	\
+	extern struct k_condvar name ALIAS_OF(_zc_##name);
 
 /**
  * @}
@@ -2953,8 +2958,10 @@ struct k_sem {
 
 #define K_OBJ_SEM K_OBJ_ZYNC_PAIR
 
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 #define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
 	{ Z_ZYNCP_INITIALIZER(initial_count, true, false, false, count_limit) }
+#endif
 
 /**
  * INTERNAL_HIDDEN @endcond
@@ -2975,12 +2982,6 @@ struct k_sem {
  *
  */
 #define K_SEM_MAX_LIMIT K_ZYNC_ATOM_VAL_MAX
-
-#if defined(CONFIG_ZYNC_MAX_VAL) || defined(CONFIG_POLL)
-#define Z_SEM_USEROK 0
-#else
-#define Z_SEM_USEROK 1
-#endif
 
 /**
  * @brief Initialize a semaphore.
@@ -3035,7 +3036,7 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
  */
 static inline int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
-	int ret = z_pzyncwrap(&sem->zp, -1, timeout, Z_SEM_USEROK);
+	int ret = z_pzyncmod(&sem->zp, -1, timeout);
 
 	/* Infuriating historical API requirements in test suite */
 	if (ret == -EAGAIN && K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
@@ -3056,7 +3057,7 @@ static inline int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
  */
 static inline void k_sem_give(struct k_sem *sem)
 {
-	z_pzyncwrap(&sem->zp, 1, K_NO_WAIT, Z_SEM_USEROK);
+	z_pzyncmod(&sem->zp, 1, K_NO_WAIT);
 }
 
 /**
