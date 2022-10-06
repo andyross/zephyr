@@ -34,7 +34,7 @@ typedef union {
 #endif
 
 struct k_zync_cfg {
-	uint32_t atom_init : K_ZYNC_ATOM_MAX_VAL_BITS;
+	uint32_t atom_init : K_ZYNC_ATOM_VAL_BITS;
 	bool fair : 1;
 	IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST, (bool prio_boost : 1;))
 	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (bool recursive : 1;))
@@ -252,23 +252,21 @@ __syscall void k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom);
 __syscall int32_t k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 			 k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t to);
 
-__syscall uint32_t z_zync_atom_val(k_zync_atom_t *mod_atom);
+__syscall uint32_t z_zync_atom_val(struct k_zync *zync);
 
-static inline uint32_t z_impl_z_zync_atom_val(k_zync_atom_t *atom)
-{
-	return atom->val;
-}
-
-/* In practice, zyncs and atoms are always used in pairs, z_zync_pair
+/* In practice, zyncs and atoms are always used togather; z_zync_pair
  * is an internal utility to manage this arrangement for the benefit
- * of higher level APIs like k_sem/k_mutex.  It supports a 
+ * of higher level APIs like k_sem/k_mutex.
  */
 
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 
 struct z_zync_pair {
 	struct k_zync zync;
-}
+};
+
+#define Z_PAIR_ZYNC(zp) (&(zp)->zync)
+#define Z_PAIR_ATOM(zp) (&(zp)->zync.atom)
 
 #define Z_ZYNCP_INITIALIZER(initv, fair, rec, pboost, maxv) {		\
 	.zync = K_ZYNC_INITIALIZER(initv, fair, rec, pboost, maxv),	\
@@ -285,36 +283,39 @@ struct z_zync_pair {
 
 struct z_zync_pair {
 	struct k_zync *zync;
-	struct k_zync_atom atom;
+	k_zync_atom_t atom;
 };
 
-#define Z_ZYNCP_PDEF(name, part, initv, fair, rec, pboost, maxv) \
+#define Z_PAIR_ZYNC(zp) ((zp)->zync)
+#define Z_PAIR_ATOM(zp) (&(zp)->atom)
+
+#define Z_ZYNCP_PDEF(name, part, initv, fair, rec, pboost, maxv)	\
 	static struct k_zync _zn_##name =				\
 		K_ZYNC_INITIALIZER((initv), (fair), (rec),		\
 				   (pboost), (maxv));			\
-	struct z_zync_pair name K_APP_DMEM(part) = \
-		{ .zync = &_zn_##name, .atom = &_za_##name };
+	struct z_zync_pair name part =					\
+		{ .zync = &_zn_##name, .atom = { .val = (initv) } };
 
 #define Z_ZYNCP_USER_DEFINE(name, part, initv, fair, rec, pboost, maxv) \
-	Z_ZYNCP_PDEF(name, K_APP_DMEM(part), initv, fair, rec, pboost, maxv) \
+	Z_ZYNCP_PDEF(name, K_APP_DMEM(part), initv, fair, rec, pboost, maxv)
 
-#define Z_ZYNCP_PDEF(name, initv, fair, rec, pboost, maxv) \
-	Z_ZYNCP_USER_DEFINE(name, /*no partition*/, initv, fair, rec, pboost, maxv)
+#define Z_ZYNCP_DEFINE(name, initv, fair, rec, pboost, maxv) \
+	Z_ZYNCP_PDEF(name, /*no partition*/, initv, fair, rec, pboost, maxv)
 
 #endif
 
-__syscall int32_t z_pzync(struct z_zync_pair *mod_z, int32_t mod,
-			  k_timeout_t timeout);
+__syscall int32_t z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout);
 
 static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 				 k_timeout_t timeout)
 {
-	if (!IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT) &&
-	    k_zync_try_mod(&zp->atom, mod)) {
-		return 0;
-	}
-	int32_t ret = z_pzync(zp, mod, timeout);
+	int32_t ret = 0;
 
+	if (IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
+		ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
+	} else if (!k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
+		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), NULL, mod, timeout);
+	}
 	return ret < 0 ? ret : 0;
 }
 

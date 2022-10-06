@@ -2721,9 +2721,8 @@ struct k_mutex {
 
 #define K_OBJ_MUTEX K_OBJ_ZYNC_PAIR
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-#define Z_MUTEX_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(1, true, true, true, 0) }
-#endif
+// FIXME
+//#define Z_MUTEX_INITIALIZER(obj)
 
 /**
  * @brief Statically define and initialize a mutex.
@@ -2771,7 +2770,7 @@ static inline int k_mutex_init(struct k_mutex *mutex)
 		IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST, (.prio_boost = true,))
 	};
 
-        k_zync_init(&mutex->zp.zync, &mutex->zp.atom, &cfg);
+        k_zync_init(Z_PAIR_ZYNC(&mutex->zp), Z_PAIR_ATOM(&mutex->zp), &cfg);
 	return 0;
 }
 
@@ -2832,15 +2831,12 @@ static inline int k_mutex_unlock(struct k_mutex *mutex)
  * @}
  */
 
-
 struct k_condvar {
 	struct z_zync_pair zp;
 };
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-#define Z_CONDVAR_INITIALIZER(obj) \
-	{ Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
-#endif
+// FIXME
+//#define Z_CONDVAR_INITIALIZER(obj)
 
 /**
  * @defgroup condvar_apis Condition Variables APIs
@@ -2858,19 +2854,20 @@ static inline int k_condvar_init(struct k_condvar *condvar)
 {
 	struct k_zync_cfg cfg = { .fair = true };
 
-	k_zync_init(condvar->zp.zync, &condvar->zp.atom, &cfg);
+	k_zync_init(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp), &cfg);
 	return 0;
 }
 
 /**
  * @brief Signals one thread that is pending on the condition variable
  *
- * @param condvar pointer to a @p k_condvar structure
+ * @param cv pointer to a @p k_condvar structure
  * @retval 0 On success
  */
 static inline int k_condvar_signal(struct k_condvar *cv)
 {
-	k_zync(cv->zp.zync, &cv->zp.atom, &cv->zp.atom, 1, K_NO_WAIT);
+	k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), Z_PAIR_ATOM(&cv->zp),
+	       1, K_NO_WAIT);
 	return 0;
 }
 
@@ -2878,12 +2875,12 @@ static inline int k_condvar_signal(struct k_condvar *cv)
  * @brief Unblock all threads that are pending on the condition
  * variable
  *
- * @param condvar pointer to a @p k_condvar structure
+ * @param cv pointer to a @p k_condvar structure
  * @return An integer with number of woken threads on success
  */
-static inline int k_condvar_broadcast(struct k_condvar *condvar)
+static inline int k_condvar_broadcast(struct k_condvar *cv)
 {
-	return k_zync(condvar->zp.zync, &condvar->zp.atom, &condvar->zp.atom,
+	return k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), Z_PAIR_ATOM(&cv->zp),
 		      K_ZYNC_ATOM_VAL_MAX, K_NO_WAIT);
 }
 
@@ -2907,8 +2904,8 @@ static inline int k_condvar_broadcast(struct k_condvar *condvar)
 static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 				 k_timeout_t timeout)
 {
-	int ret = k_zync(condvar->zp.zync, &condvar->zp.atom, &mutex->zp.atom,
-			 -1, timeout);
+	int ret = k_zync(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp),
+			 Z_PAIR_ATOM(&mutex->zp), -1, timeout);
 
 	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
 	 * was coded originally, and we actually have a test that
@@ -2958,10 +2955,8 @@ struct k_sem {
 
 #define K_OBJ_SEM K_OBJ_ZYNC_PAIR
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-#define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
-	{ Z_ZYNCP_INITIALIZER(initial_count, true, false, false, count_limit) }
-#endif
+// FIXME
+//#define Z_SEM_INITIALIZER(obj, initial_count, count_limit) 
 
 /**
  * INTERNAL_HIDDEN @endcond
@@ -3007,7 +3002,7 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
 		IF_ENABLED(CONFIG_ZYNC_MAX_VAL, (.max_val = limit,))
 	};
 
-	k_zync_init(&sem->zp.zync, &sem->zp.atom, &cfg);
+	k_zync_init(Z_PAIR_ZYNC(&sem->zp), Z_PAIR_ATOM(&sem->zp), &cfg);
 
 	if (limit > K_ZYNC_ATOM_VAL_MAX || limit == 0 || initial_count > limit) {
 		return -EINVAL;
@@ -3071,7 +3066,7 @@ static inline void k_sem_give(struct k_sem *sem)
  */
 static inline void k_sem_reset(struct k_sem *sem)
 {
-	k_zync_reset(&sem->zp.zync, &sem->zp.atom);
+	k_zync_reset(Z_PAIR_ZYNC(&sem->zp), Z_PAIR_ATOM(&sem->zp));
 }
 
 /**
@@ -3091,7 +3086,11 @@ static inline void k_sem_reset(struct k_sem *sem)
  */
 static inline unsigned int k_sem_count_get(struct k_sem *sem)
 {
-	return z_zync_atom_val(&sem->zp.atom);
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+	return z_zync_atom_val(Z_PAIR_ZYNC(&sem->zp));
+#else
+	return sem->zp.atom.val;
+#endif
 }
 
 /**

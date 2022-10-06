@@ -107,7 +107,6 @@ kobjects = OrderedDict([
     ("k_futex", (None, True, False)),
     ("k_condvar", (None, False, True)),
     ("k_zync", (None, False, False)),
-    ("z_zync_pair", (None, False, False)),
     ("k_mutex", (None, False, False)),
     ("k_event", ("CONFIG_EVENTS", False, True)),
     ("ztest_suite_node", ("CONFIG_ZTEST", True, False)),
@@ -116,19 +115,7 @@ kobjects = OrderedDict([
     ("ztest_test_rule", ("CONFIG_ZTEST_NEW_API", True, False))
 ])
 
-# Some types are handled as "aliases" at this level, so they can be
-# represented identically at the syscall handler layer but still look
-# like distinct struct types in C code (for the benefit of
-# compiler-provided typesafety)
-kobj_aliases = {
-    "k_mutex" : "z_zync_pair",
-    "k_sem" : "z_zync_pair",
-}
-
 def kobject_to_enum(kobj):
-    if kobj in kobj_aliases:
-        kobj = kobj_aliases[kobj]
-
     if kobj.startswith("k_") or kobj.startswith("z_"):
         name = kobj[2:]
     else:
@@ -925,9 +912,6 @@ def write_kobj_types_output(fp):
         if kobj == "device":
             continue
 
-        if kobj in kobj_aliases:
-            continue
-
         if dep:
             fp.write("#ifdef %s\n" % dep)
 
@@ -947,9 +931,6 @@ def write_kobj_otype_output(fp):
     for kobj, obj_info in kobjects.items():
         dep, _, _ = obj_info
         if kobj == "device":
-            continue
-
-        if kobj in kobj_aliases:
             continue
 
         if dep:
