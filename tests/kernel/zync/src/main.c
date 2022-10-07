@@ -160,7 +160,7 @@ ZTEST_USER(zync_tests, test_zync_wake_all)
 	zassert_equal(awaiting_count, NUM_THREADS, "wrong count of wait threads");
 
 	k_zync(&zync, &mod_atom, NULL, NUM_THREADS + 1, K_NO_WAIT);
-	k_sleep(K_TICKS(1));
+	k_sleep(K_TICKS(NUM_THREADS)); /* be generous, there are a lot of threads */
 	zassert_equal(awoken_count, NUM_THREADS, "wrong woken count");
 	zassert_equal(awaiting_count, 0, "wrong woken count");
 	zassert_equal(mod_atom.val, 1, "wrong atom value");
