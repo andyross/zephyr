@@ -225,7 +225,6 @@ void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 	k_spin_unlock(&zync->lock, key);
 }
 
-
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 int32_t z_impl_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
@@ -256,15 +255,21 @@ void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 }
 #include <syscalls/k_zync_get_config_mrsh.c>
 
+static void chk_atom(struct k_zync *zync, k_zync_atom_t *atom)
+{
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+	if (atom == &zync->atom) {
+		return;
+	}
+#endif
+	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(atom, sizeof(*atom)));
+}
+
 void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 			struct k_zync_cfg *cfg)
 {
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-	atom = &zync->atom;
-#else
-	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(atom, sizeof(*atom)));
-#endif
+	chk_atom(zync, atom);
 	Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
 	z_impl_k_zync_init(zync, atom, cfg);
 	z_object_init(zync);
@@ -275,7 +280,7 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
 {
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
-	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(mod_atom, sizeof(*mod_atom)));
+	chk_atom(zync, mod_atom);
 	if (reset_atom != NULL) {
 		Z_OOPS(Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom)));
 	}
@@ -286,11 +291,7 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 {
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-	atom = &zync->atom;
-#else
-	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(atom, sizeof(*atom)));
-#endif
+	chk_atom(zync, atom);
 	z_impl_k_zync_reset(zync, atom);
 }
 #include <syscalls/k_zync_reset_mrsh.c>

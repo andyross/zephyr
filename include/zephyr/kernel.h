@@ -2959,7 +2959,7 @@ struct k_sem {
 
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 #define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
-	{ Z_ZYNCP_INITIALIZER(initial_count, false, false, false, count_limit) }
+	{ Z_ZYNCP_INITIALIZER(initial_count, true, false, false, count_limit) }
 #endif
 
 /**

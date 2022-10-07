@@ -170,11 +170,15 @@ ZTEST_USER(zync_tests, test_reset_atom)
 {
 	int32_t ret;
 
+	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	reset_zync(NULL);
+	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	reset_atom.val = 2;
 
 	/* reset_atom != mod_atom */
+	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	ret = k_zync(&zync, &mod_atom, &reset_atom, 1, K_NO_WAIT);
+	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	zassert_equal(ret, 1, "wrong return value: %d", ret);
 	zassert_equal(reset_atom.val, 1, "wrong reset atom value");
 	zassert_equal(mod_atom.val, 1, "atom value didn't increment");
