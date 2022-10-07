@@ -338,6 +338,7 @@ config ZYNC_USERSPACE_COMPAT
 
 config ZYNC_PRIO_BOOST
 	bool "Enable Zync priority inheritance algorithm"
+	select ZYNC_USERSPACE_COMPAT
 	help
 	  When selected, k_zync() will be able to boost the priority
 	  of the "owner" of a Zync to the priority of any of its
@@ -348,6 +349,7 @@ config ZYNC_PRIO_BOOST
 
 config ZYNC_MAX_VAL
 	bool "Enable Zync maximum value clamping"
+	select ZYNC_USERSPACE_COMPAT
 	help
 	  When selected, the maximum atom value for a Zync may be
 	  controlled per-object by application code.  Very few apps
@@ -358,6 +360,7 @@ config ZYNC_MAX_VAL
 
 config ZYNC_RECURSIVE
 	bool "Enable recursive Zync locks"
+	select ZYNC_USERSPACE_COMPAT
 	help
 	  When selected, a k_zync can be configured as a recursive
 	  lock, allowing a single thread to take the lock multiple
