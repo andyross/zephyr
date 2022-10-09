@@ -325,6 +325,7 @@ config ZYNC_VALIDATE
 config ZYNC_USERSPACE_COMPAT
 	bool "Enable legacy userspace API for defining zyncs"
 	default y if USERSPACE
+	default y if NET_MGMT_EVENT
 	help
 	  When true, zync objects (and thus zync-derived IPC objects
 	  like mutexes and semaphores) will always include their own
