@@ -282,7 +282,17 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
 	chk_atom(zync, mod_atom);
 	if (reset_atom != NULL) {
-		Z_OOPS(Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom)));
+		int ret = -1;
+
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+		/* may be an atom field of a valid zync */
+		ret = Z_SYSCALL_OBJ_INIT(CONTAINER_OF(reset_atom, struct k_zync, atom),
+					 K_OBJ_ZYNC);
+#endif
+		if (ret) {
+			ret = Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom));
+		}
+		Z_OOPS(ret);
 	}
 	return z_impl_k_zync(zync, mod_atom, reset_atom, mod, timeout);
 }
