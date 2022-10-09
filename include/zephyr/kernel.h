@@ -2777,10 +2777,10 @@ struct k_mutex {
 static inline int k_mutex_init(struct k_mutex *mutex)
 {
 	struct k_zync_cfg cfg = {
-		.fair = true,
 		.atom_init = 1,
-		IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (.recursive = true,))
+		.fair = true,
 		IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST, (.prio_boost = true,))
+		IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (.recursive = true,))
 	};
 
         k_zync_init(Z_PAIR_ZYNC(&mutex->zp), Z_PAIR_ATOM(&mutex->zp), &cfg);
@@ -3013,8 +3013,8 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
 			     unsigned int limit)
 {
 	struct k_zync_cfg cfg = {
-		.fair = true,
 		.atom_init = initial_count,
+		.fair = true,
 		IF_ENABLED(CONFIG_ZYNC_MAX_VAL, (.max_val = limit,))
 	};
 
