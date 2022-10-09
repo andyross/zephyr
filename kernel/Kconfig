@@ -326,6 +326,12 @@ config ZYNC_USERSPACE_COMPAT
 	bool "Enable legacy userspace API for defining zyncs"
 	default y if USERSPACE
 	default y if NET_MGMT_EVENT
+	default y if USB_DEVICE_STACK
+	default y if CAN
+	default y if PM_DEVICE
+	default y if ADC
+	default y if ETH_ENC424J600
+	default y if GPIO_PCA953X
 	help
 	  When true, zync objects (and thus zync-derived IPC objects
 	  like mutexes and semaphores) will always include their own
