@@ -2738,6 +2738,18 @@ struct k_mutex {
 	Z_ZYNCP_DEFINE(_z_##name, 1, true, true, true, 1);		\
 	extern struct k_mutex name ALIAS_OF(_z_##name);
 
+/**
+ * @brief Statically define and initialize a local mutex.
+ *
+ * As for K_MUTEX_DEFINE, but the resulting symbol is static and
+ * cannot be used outside the current translation unit.
+ *
+ * @param name Name of the mutex.
+ */
+#define K_MUTEX_STATIC_DEFINE(name)				\
+	Z_ZYNCP_DEFINE(_z_##name, 1, true, true, true, 1);	\
+	static struct k_mutex name ALIAS_OF(_z_##name);
+
 /** @brief Define a mutex for use from a specific memory domain
  *
  * As for K_MUTEX_DEFINE, but places the (fast!) k_zync_atom_t in the

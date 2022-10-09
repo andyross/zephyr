@@ -351,7 +351,7 @@ static uint8_t mdm_recv_buf[MDM_MAX_DATA_LENGTH];
 
 K_SEM_STATIC_DEFINE(hl7800_RX_lock_sem, 1, 1);
 K_SEM_STATIC_DEFINE(hl7800_TX_lock_sem, 1, 1);
-static K_MUTEX_DEFINE(cb_lock);
+K_MUTEX_STATIC_DEFINE(cb_lock);
 
 /* RX thread structures */
 K_THREAD_STACK_DEFINE(hl7800_rx_stack, CONFIG_MODEM_HL7800_RX_STACK_SIZE);
