@@ -12,8 +12,12 @@
 #include <zephyr/kernel_structs.h>
 #include <zephyr/syscall.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define K_ZYNC_ATOM_VAL_BITS 24
-#define K_ZYNC_ATOM_VAL_MAX (BIT(K_ZYNC_ATOM_VAL_BITS) - 1)
+#define K_ZYNC_ATOM_VAL_MAX ((int32_t)(BIT(K_ZYNC_ATOM_VAL_BITS) - 1))
 
 /** @brief Zephyr atomic synchronization primitive
  *
@@ -320,6 +324,10 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 }
 
 bool z_vrfy_zync(void *p, bool init);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #include <syscalls/zync.h>
 
