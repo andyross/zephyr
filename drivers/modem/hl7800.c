@@ -349,8 +349,8 @@ NET_BUF_POOL_DEFINE(mdm_recv_pool, CONFIG_MODEM_HL7800_RECV_BUF_CNT,
 
 static uint8_t mdm_recv_buf[MDM_MAX_DATA_LENGTH];
 
-static K_SEM_DEFINE(hl7800_RX_lock_sem, 1, 1);
-static K_SEM_DEFINE(hl7800_TX_lock_sem, 1, 1);
+K_SEM_STATIC_DEFINE(hl7800_RX_lock_sem, 1, 1);
+K_SEM_STATIC_DEFINE(hl7800_TX_lock_sem, 1, 1);
 static K_MUTEX_DEFINE(cb_lock);
 
 /* RX thread structures */
