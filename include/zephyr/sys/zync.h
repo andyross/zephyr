@@ -273,11 +273,11 @@ __syscall uint32_t z_zync_atom_val(struct k_zync *zync);
 	.zync.atom = { .val = (initv) }}				\
 
 #define Z_ZYNCP_DEFINE(name, initv, fair, rec, prio_boost, maxv)	\
-	struct z_zync_pair name = Z_ZYNCP_INITIALIZER((initv), (fair), (rec), \
-						      (prio_boost), (maxv))
+	static struct z_zync_pair name = Z_ZYNCP_INITIALIZER((initv), (fair), (rec), \
+							     (prio_boost), (maxv))
 
 #define Z_ZYNCP_USER_DEFINE(name, part, initv, fair, rec, pboost, maxv) \
-	Z_ZYNCP_DEFINE(name, initv, fair, rec, pboost, maxv) \
+	Z_ZYNCP_DEFINE(name, initv, fair, rec, pboost, maxv)		\
 
 #else /* !CONFIG_ZYNC_USERSPACE_COMPAT */
 
@@ -293,7 +293,7 @@ struct z_zync_pair {
 	static struct k_zync _zn_##name =				\
 		K_ZYNC_INITIALIZER((initv), (fair), (rec),		\
 				   (pboost), (maxv));			\
-	struct z_zync_pair name part =					\
+	static struct z_zync_pair name part =				\
 		{ .zync = &_zn_##name, .atom = { .val = (initv) } };
 
 #define Z_ZYNCP_USER_DEFINE(name, part, initv, fair, rec, pboost, maxv) \
