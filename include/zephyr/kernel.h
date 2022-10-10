@@ -2940,7 +2940,7 @@ static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mute
  * @param name Name of the condition variable.
  */
 #define K_CONDVAR_DEFINE(name)					\
-	Z_ZYNCP_DEFINE(_zc_##name, 0, true, false, false, 0)	\
+	Z_ZYNCP_DEFINE(_zc_##name, 0, true, false, false, 0);	\
 	extern struct k_condvar name ALIAS_OF(_zc_##name);
 
 /** @brief Define a condition variable for use from a specific memory domain
