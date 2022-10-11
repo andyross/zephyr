@@ -71,6 +71,8 @@ struct k_zync {
 		   (.cfg.recursive = rec,))				\
 	IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST,				\
 		   (.cfg.prio_boost = prioboost,))			\
+	IF_ENABLED(CONFIG_POLL,						\
+		   (.pollable = (init != 0),))				\
 	.cfg.fair = (isfair) }
 
 #define K_ZYNC_DEFINE(name, init, isfair, rec, prioboost, maxval)	\

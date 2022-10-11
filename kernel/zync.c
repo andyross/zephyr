@@ -89,6 +89,9 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	memset(zync, 0, sizeof(*zync));
 	k_zync_set_config(zync, cfg);
 	atom->val = cfg->atom_init;
+#ifdef CONFIG_POLL
+	zync->pollable = (cfg->atom_init != 0);
+#endif
 }
 
 int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
@@ -147,6 +150,7 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 #ifdef CONFIG_POLL
 	if (delta > 0 && val0 == 0) {
 		z_handle_obj_poll_events(&zync->poll_events, K_POLL_STATE_ZYNC);
+		resched = true;
 	}
 	zync->pollable = (val1 != 0);
 #endif

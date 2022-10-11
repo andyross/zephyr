@@ -87,7 +87,6 @@ static inline bool is_condition_met(struct k_poll_event *event, uint32_t *state)
 			return true;
 		}
 #endif
-	case K_POLL_TYPE_SEM_AVAILABLE:
 	case K_POLL_TYPE_ZYNC:
 		if (event->zync->poll_events.head == NULL) {
 			sys_dlist_init(&event->zync->poll_events);
@@ -158,7 +157,6 @@ static inline void register_event(struct k_poll_event *event,
 		add_event(&event->pipe->poll_events, event, poller);
 		break;
 #endif
-	case K_POLL_TYPE_SEM_AVAILABLE:
 	case K_POLL_TYPE_ZYNC:
 		__ASSERT(event->zync != NULL, "invalid zync\n");
 		add_event(&event->zync->poll_events, event, poller);
@@ -181,10 +179,6 @@ static inline void clear_event_registration(struct k_poll_event *event)
 	event->poller = NULL;
 
 	switch (event->type) {
-	case K_POLL_TYPE_SEM_AVAILABLE:
-		__ASSERT(event->sem != NULL, "invalid semaphore\n");
-		remove_event = true;
-		break;
 	case K_POLL_TYPE_DATA_AVAILABLE:
 		__ASSERT(event->queue != NULL, "invalid queue\n");
 		remove_event = true;
@@ -425,7 +419,6 @@ static inline int z_vrfy_k_poll(struct k_poll_event *events,
 			Z_OOPS(Z_SYSCALL_OBJ(e->pipe, K_OBJ_PIPE));
 			break;
 #endif
-		case K_POLL_TYPE_SEM_AVAILABLE:
 		case K_POLL_TYPE_ZYNC:
 			z_vrfy_zync(e->zync, false);
 			break;
