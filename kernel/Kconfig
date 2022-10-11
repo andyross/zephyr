@@ -313,7 +313,7 @@ endchoice # WAITQ_ALGORITHM
 
 config ZYNC_VALIDATE
 	bool "Enable k_zync validation layer"
-	default y if ASSERT && !USERSPACE
+	default y if ASSERT && !USERSPACE && !NETWORKING
 	help
 	  The zync facility includes a simple validation layer to
 	  detect circumstances like freeing locks from the wrong
@@ -368,6 +368,7 @@ config ZYNC_MAX_VAL
 config ZYNC_RECURSIVE
 	bool "Enable recursive Zync locks"
 	select ZYNC_USERSPACE_COMPAT
+	default y if NETWORKING
 	help
 	  When selected, a k_zync can be configured as a recursive
 	  lock, allowing a single thread to take the lock multiple
