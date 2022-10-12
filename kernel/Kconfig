@@ -380,6 +380,7 @@ config ZYNC_RECURSIVE
 	default y if DISK_ACCESS
 	default y if GPIO
 	default y if ADC
+	default y if NEWLIB_LIBC
 	default y if CMSIS_RTOS_V1
 	default y if CMSIS_RTOS_V2
 	help
