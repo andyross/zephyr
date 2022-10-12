@@ -3121,7 +3121,7 @@ static inline unsigned int k_sem_count_get(struct k_sem *sem)
  * @param count_limit Maximum permitted semaphore count.
  */
 #define K_SEM_DEFINE(name, initial_count, count_limit)			\
-	Z_ZYNCP_DEFINE(_z_##name, initial_count, true, true, true, count_limit); \
+	Z_ZYNCP_DEFINE(_z_##name, initial_count, true, false, false, count_limit); \
         extern struct k_sem name ALIAS_OF(_z_##name);
 
 /**
@@ -3135,7 +3135,7 @@ static inline unsigned int k_sem_count_get(struct k_sem *sem)
  * @param count_limit Maximum permitted semaphore count.
  */
 #define K_SEM_STATIC_DEFINE(name, initial_count, count_limit)		\
-	Z_ZYNCP_DEFINE(_z_##name, initial_count, true, true, true, count_limit); \
+	Z_ZYNCP_DEFINE(_z_##name, initial_count, true, false, false, count_limit); \
         static struct k_sem name ALIAS_OF(_z_##name);
 
 #define K_SEM_USER_DEFINE(name, part, initial_count, count_limit)	\
