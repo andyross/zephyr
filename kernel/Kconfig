@@ -363,6 +363,7 @@ config ZYNC_MAX_VAL
 	bool "Enable Zync maximum value clamping"
 	select ZYNC_USERSPACE_COMPAT
 	default y if NETWORKING
+	default y if CMSIS_RTOS_V2
 	help
 	  When selected, the maximum atom value for a Zync may be
 	  controlled per-object by application code.  Very few apps
@@ -378,6 +379,7 @@ config ZYNC_RECURSIVE
 	default y if DISK_ACCESS
 	default y if GPIO
 	default y if ADC
+	default y if CMSIS_RTOS_V2
 	help
 	  When selected, a k_zync can be configured as a recursive
 	  lock, allowing a single thread to take the lock multiple
