@@ -272,6 +272,10 @@ static void chk_atom(struct k_zync *zync, k_zync_atom_t *atom)
 void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 			struct k_zync_cfg *cfg)
 {
+	if (IS_ENABLED(CONFIG_ZYNC_VALIDATE) &&
+	    !IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
+		__ASSERT(zync != NULL, "NULL zync, need ZYNC_USERSPACE_COMPAT?")
+	}
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
 	chk_atom(zync, atom);
 	Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));

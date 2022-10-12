@@ -2812,6 +2812,12 @@ static inline int k_mutex_init(struct k_mutex *mutex)
  */
 static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 {
+#if defined(CONFIG_ZYNC_RECURSIVE) && defined(CONFIG_ZYNC_VALIDATE)
+	__ASSERT_NO_MSG(Z_PAIR_ZYNC(&mutex->zp)->cfg.recursive);
+#endif
+#if defined(CONFIG_ZYNC_PRIO_BOOST) && defined(CONFIG_ZYNC_VALIDATE)
+	__ASSERT_NO_MSG(Z_PAIR_ZYNC(&mutex->zp)->cfg.prio_boost);
+#endif
 	return z_pzyncmod(&mutex->zp, -1, timeout);
 }
 

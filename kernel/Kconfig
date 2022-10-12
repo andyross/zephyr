@@ -313,7 +313,7 @@ endchoice # WAITQ_ALGORITHM
 
 config ZYNC_VALIDATE
 	bool "Enable k_zync validation layer"
-	default y if ASSERT && !USERSPACE && !NETWORKING
+	default y if ASSERT && !USERSPACE
 	help
 	  The zync facility includes a simple validation layer to
 	  detect circumstances like freeing locks from the wrong
@@ -332,6 +332,10 @@ config ZYNC_USERSPACE_COMPAT
 	default y if ADC
 	default y if ETH_ENC424J600
 	default y if GPIO_PCA953X
+	default y if NET_BUF
+	default y if EEPROM
+	default y if MPSC_PBUF
+	default y if ZEPHYR_CHRE_MODULE
 	help
 	  When true, zync objects (and thus zync-derived IPC objects
 	  like mutexes and semaphores) will always include their own
@@ -357,6 +361,7 @@ config ZYNC_PRIO_BOOST
 config ZYNC_MAX_VAL
 	bool "Enable Zync maximum value clamping"
 	select ZYNC_USERSPACE_COMPAT
+	default y if NETWORKING
 	help
 	  When selected, the maximum atom value for a Zync may be
 	  controlled per-object by application code.  Very few apps
@@ -369,6 +374,9 @@ config ZYNC_RECURSIVE
 	bool "Enable recursive Zync locks"
 	select ZYNC_USERSPACE_COMPAT
 	default y if NETWORKING
+	default y if DISK_ACCESS
+	default y if GPIO
+	default y if ADC
 	help
 	  When selected, a k_zync can be configured as a recursive
 	  lock, allowing a single thread to take the lock multiple
