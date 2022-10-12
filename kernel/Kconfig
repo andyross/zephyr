@@ -335,6 +335,7 @@ config ZYNC_USERSPACE_COMPAT
 	default y if NET_BUF
 	default y if EEPROM
 	default y if MPSC_PBUF
+	default y if BT_HCI_HOST
 	default y if ZEPHYR_CHRE_MODULE
 	help
 	  When true, zync objects (and thus zync-derived IPC objects
