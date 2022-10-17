@@ -420,7 +420,7 @@ static inline int z_vrfy_k_poll(struct k_poll_event *events,
 			break;
 #endif
 		case K_POLL_TYPE_ZYNC:
-			z_vrfy_zync(e->zync, false);
+			Z_OOPS(Z_SYSCALL_OBJ_INIT(e->zync, K_OBJ_ZYNC));
 			break;
 		default:
 			ret = -EINVAL;
