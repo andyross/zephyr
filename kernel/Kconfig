@@ -393,7 +393,6 @@ config ZYNC_RECURSIVE
 
 config ZYNC_LEGACY
 	bool "Force zync to honor all legacy semantics"
-	select ZYNC_VALIDATE
 	select ZYNC_USERSPACE_COMPAT
 	select ZYNC_PRIO_BOOST
 	select ZYNC_MAX_VAL

@@ -331,6 +331,8 @@ bool z_vrfy_zync(void *p, bool init);
 } /* extern "C" */
 #endif
 
+#ifndef CONFIG_BOARD_UNIT_TESTING
 #include <syscalls/zync.h>
+#endif
 
 #endif /* ZEPHYR_SYS_ZYNC_H */

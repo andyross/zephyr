@@ -2854,6 +2854,8 @@ struct k_condvar {
 	struct z_zync_pair zp;
 };
 
+#define K_OBJ_CONDVAR K_OBJ_ZYNC
+
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 #define Z_CONDVAR_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
 #endif
