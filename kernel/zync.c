@@ -92,6 +92,7 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 #ifdef CONFIG_POLL
 	zync->pollable = (cfg->atom_init != 0);
 #endif
+	z_object_init(zync);
 }
 
 int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
@@ -245,7 +246,7 @@ uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 
 void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 {
-	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
         Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
 	z_impl_k_zync_set_config(zync, cfg);
 }
@@ -253,7 +254,7 @@ void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
 
 void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 {
-	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
         Z_OOPS(Z_SYSCALL_MEMORY_WRITE(cfg, sizeof(*cfg)));
 	z_impl_k_zync_get_config(zync, cfg);
 }
@@ -280,22 +281,21 @@ void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	chk_atom(zync, atom);
 	Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
 	z_impl_k_zync_init(zync, atom, cfg);
-	z_object_init(zync);
 }
 #include <syscalls/k_zync_init_mrsh.c>
 
 int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
 {
-	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
 	chk_atom(zync, mod_atom);
 	if (reset_atom != NULL) {
 		int ret = -1;
 
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 		/* may be an atom field of a valid zync */
-		ret = Z_SYSCALL_OBJ_INIT(CONTAINER_OF(reset_atom, struct k_zync, atom),
-					 K_OBJ_ZYNC);
+		ret = Z_SYSCALL_OBJ(CONTAINER_OF(reset_atom, struct k_zync, atom),
+				    K_OBJ_ZYNC);
 #endif
 		if (ret) {
 			ret = Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom));
@@ -308,7 +308,7 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 
 void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 {
-	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
 	chk_atom(zync, atom);
 	z_impl_k_zync_reset(zync, atom);
 }
@@ -317,14 +317,14 @@ void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 int32_t z_vrfy_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
-        Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+        Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
 	return z_impl_z_pzync(zync, mod, timeout);
 }
 #include <syscalls/z_pzync_mrsh.c>
 
 uint32_t z_vrfy_z_zync_atom_val(struct k_zync *zync)
 {
-	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
 	return z_impl_z_zync_atom_val(zync);
 }
 #include <syscalls/z_zync_atom_val_mrsh.c>

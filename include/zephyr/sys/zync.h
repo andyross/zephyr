@@ -76,7 +76,8 @@ struct k_zync {
 	.cfg.fair = (isfair) }
 
 #define K_ZYNC_DEFINE(name, init, isfair, rec, prioboost, maxval)	\
-	struct k_zync name = K_ZYNC_INITIALIZER(init, isfair, rec, prioboost, maxval);
+	STRUCT_SECTION_ITERABLE(k_zync, name) =				\
+		K_ZYNC_INITIALIZER(init, isfair, rec, prioboost, maxval);
 
 /** @brief Atomically modify a k_zync_atom
  *
@@ -279,8 +280,8 @@ __syscall uint32_t z_zync_atom_val(struct k_zync *zync);
 	.zync.atom = { .val = (initv) }}				\
 
 #define Z_ZYNCP_DEFINE(name, initv, fair, rec, prio_boost, maxv)	\
-	static struct z_zync_pair name = Z_ZYNCP_INITIALIZER((initv), (fair), (rec), \
-							     (prio_boost), (maxv))
+	static STRUCT_SECTION_ITERABLE(z_zync_pair, name) =		\
+		Z_ZYNCP_INITIALIZER((initv), (fair), (rec), (prio_boost), (maxv))
 
 #define Z_ZYNCP_USER_DEFINE(name, part, initv, fair, rec, pboost, maxv) \
 	Z_ZYNCP_DEFINE(name, initv, fair, rec, pboost, maxv)		\
