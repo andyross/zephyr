@@ -342,18 +342,39 @@ ZTEST_USER(zync_tests, test_recursive)
 
 	mod_atom.val = 1; /* start "unlocked" */
 
-	for (int i = 0; i < lock_count; i++) {
+	k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
+	zassert_equal(mod_atom.val, 0, "recursive zync didn't lock");
+
+	/* Spawn a thread to try to lock it, make sure it doesn't get it */
+	awaiting_count = awoken_count = 0;
+	spawn_wait_thread(0, true);
+	k_sleep(K_TICKS(1));
+	zassert_equal(awaiting_count, 1, "thread not waiting");
+	zassert_equal(awoken_count, 0, "thread woke up");
+
+	for (int i = 0; i < (lock_count - 1); i++) {
 		k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
 		zassert_equal(mod_atom.val, 0, "recursive zync didn't lock");
+		k_sleep(K_TICKS(1));
+		zassert_equal(awaiting_count, 1, "thread not waiting");
+		zassert_equal(awoken_count, 0, "thread woke up");
 	}
 
 	for (int i = 0; i < (lock_count - 1); i++) {
 		k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
 		zassert_equal(mod_atom.val, 0, "recursive zync unlocked early");
+		k_sleep(K_TICKS(1));
+		zassert_equal(awaiting_count, 1, "thread not waiting");
+		zassert_equal(awoken_count, 0, "thread woke up");
 	}
 
 	k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
 	zassert_equal(mod_atom.val, 1, "recursive zync didn't unlock");
+
+	/* now the thread can get it */
+	k_sleep(K_TICKS(1));
+	zassert_equal(awaiting_count, 0, "thread still waiting");
+	zassert_equal(awoken_count, 1, "thread didn't wake up");
 }
 
 /* Not userspace, whiteboxes mutex */
