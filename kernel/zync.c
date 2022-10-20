@@ -1,4 +1,3 @@
-
 /* Copyright (c) 2022 Google LLC.
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -56,7 +55,6 @@ static inline int32_t modclamp(struct k_zync *zync, int32_t mod)
 	int32_t max = K_ZYNC_ATOM_VAL_MAX;
 
 #ifdef CONFIG_ZYNC_MAX_VAL
-	// FIXME: don't check vs. 0 at runtime, clamp when set!
 	if (zync->cfg.max_val != 0) {
 		max = MIN(max, zync->cfg.max_val);
 	}
@@ -107,15 +105,6 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	if (zync->cfg.recursive) {
 		__ASSERT(abs(mod) == 1, "recursive locks aren't semaphores");
 		if (mod > 0 && zync->rec_count > 0) {
-			if (_current != zync->owner) {
-				if (IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
-					__ASSERT(0, "unlocking unowned recursive zync");
-				}
-				/* Weird returns are from old k_mutex */
-				pendret = zync->owner == NULL ? -EINVAL : -EPERM;
-				k_spin_unlock(&zync->lock, key);
-				return pendret;
-			}
 			zync->rec_count--;
 			k_spin_unlock(&zync->lock, key);
 			return 1;
@@ -242,6 +231,19 @@ uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 }
 #endif
 
+int32_t z_impl_z_zync_unlock_ok(struct k_zync *zync)
+{
+	if (zync->atom.val != 0) {
+		return -EINVAL;
+	}
+#ifdef Z_ZYNC_OWNER
+	if (zync->owner != _current) {
+		return -EPERM;
+	}
+#endif
+	return 0;
+}
+
 #ifdef CONFIG_USERSPACE
 
 void z_vrfy_k_zync_set_config(struct k_zync *zync, const struct k_zync_cfg *cfg)
@@ -329,5 +331,12 @@ uint32_t z_vrfy_z_zync_atom_val(struct k_zync *zync)
 }
 #include <syscalls/z_zync_atom_val_mrsh.c>
 #endif
+
+int32_t z_vrfy_z_zync_unlock_ok(struct k_zync *zync)
+{
+	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
+	return z_impl_z_zync_unlock_ok(zync);
+}
+#include <syscalls/z_zync_unlock_ok_mrsh.c>
 
 #endif /* CONFIG_USERSPACE */

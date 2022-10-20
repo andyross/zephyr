@@ -275,6 +275,7 @@ struct z_zync_pair {
 };
 
 __syscall uint32_t z_zync_atom_val(struct k_zync *zync);
+__syscall int32_t z_zync_unlock_ok(struct k_zync *zync);
 
 #define Z_PAIR_ZYNC(zp) (&(zp)->zync)
 #define Z_PAIR_ATOM(zp) (&(zp)->zync.atom)
