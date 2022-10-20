@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2022 Google LLC.
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -103,19 +104,26 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	int32_t delta = 0, delta2 = 0, val0 = 0, val1 = 0, pendret = 0, woken;
 
 #ifdef CONFIG_ZYNC_RECURSIVE
-	if (zync->cfg.recursive && mod > 0) {
-		if (_current != zync->owner) {
-			if (IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
-				__ASSERT(0, "unlocking unowned recursive zync");
+	if (zync->cfg.recursive) {
+		__ASSERT(abs(mod) == 1, "recursive locks aren't semaphores");
+		if (mod > 0 && zync->rec_count > 0) {
+			if (_current != zync->owner) {
+				if (IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
+					__ASSERT(0, "unlocking unowned recursive zync");
+				}
+				/* Weird returns are from old k_mutex */
+				pendret = zync->owner == NULL ? -EINVAL : -EPERM;
+				k_spin_unlock(&zync->lock, key);
+				return pendret;
 			}
-			/* Weird returns are from old k_mutex */
-			pendret = zync->owner == NULL ? -EINVAL : -EPERM;
+			zync->rec_count--;
 			k_spin_unlock(&zync->lock, key);
-			return pendret;
+			return 1;
+		} else if (mod < 0 && _current == zync->owner) {
+			zync->rec_count++;
+			k_spin_unlock(&zync->lock, key);
+			return 1;
 		}
-		delta = MIN(mod, zync->rec_count);
-		zync->rec_count -= delta;
-		mod -= delta;
 	}
 #endif
 
@@ -129,14 +137,6 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 
 	nowait = K_TIMEOUT_EQ(timeout, Z_TIMEOUT_NO_WAIT);
 	must_pend = mod < 0 && mod != delta;
-
-#ifdef CONFIG_ZYNC_RECURSIVE
-	if (must_pend && zync->cfg.recursive && _current == zync->owner) {
-		zync->rec_count += -(mod - delta);
-		mod = 0;
-		must_pend = false;
-	}
-#endif
 
 #ifdef Z_ZYNC_OWNER
 	if (val1 > 0) {

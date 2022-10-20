@@ -11,6 +11,7 @@
 #include <zephyr/sys_clock.h>
 #include <zephyr/kernel_structs.h>
 #include <zephyr/syscall.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,7 +109,7 @@ struct k_zync {
  * Attempts an atomic mod operation on the value field of a zync atom,
  * as specified for k_zync() (but without clamping to a max_val other
  * than the static field maximum).  Returns true if the modifcation
- * could be made completely without saturation and if no other threads
+ * was be made completely without saturation and if no other threads
  * are waiting.  Will not otherwise modify the atom state, and no
  * intermediate states will be visible to other zync code.
  *
@@ -120,12 +121,15 @@ static inline bool k_zync_try_mod(k_zync_atom_t *atom, int32_t mod)
 {
 	k_zync_atom_t modded, old = { .atomic = atom->atomic };
 
-	if ((mod < 0 && old.val == 0) || (mod > 0 && old.waiters)) {
+	if (mod > 0 && (old.waiters || (mod > (K_ZYNC_ATOM_VAL_MAX - old.val)))) {
+		return false;
+	}
+	if (mod < 0 && (-mod > old.val)) {
 		return false;
 	}
 
 	modded = old;
-	modded.val = CLAMP(old.val + mod, 0, K_ZYNC_ATOM_VAL_MAX);
+	modded.val = old.val + mod;
 	return atomic_cas(&atom->atomic, old.atomic, modded.atomic);
 }
 
@@ -323,7 +327,7 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 	} else if (!k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
 		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), NULL, mod, timeout);
 	}
-	return ret < 0 ? ret : 0;
+	return ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
 }
 
 bool z_vrfy_zync(void *p, bool init);
