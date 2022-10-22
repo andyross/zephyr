@@ -170,15 +170,11 @@ ZTEST_USER(zync_tests, test_reset_atom)
 {
 	int32_t ret;
 
-	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	reset_zync(NULL);
-	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	reset_atom.val = 2;
 
 	/* reset_atom != mod_atom */
-	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	ret = k_zync(&zync, &mod_atom, &reset_atom, 1, K_NO_WAIT);
-	printk("atom.val %d ratom %d\n", mod_atom.val, reset_atom.val);
 	zassert_equal(ret, 1, "wrong return value: %d", ret);
 	zassert_equal(reset_atom.val, 1, "wrong reset atom value");
 	zassert_equal(mod_atom.val, 1, "atom value didn't increment");
@@ -393,6 +389,59 @@ ZTEST(zync_tests, test_wrap_mutex)
 
 	ret = k_mutex_unlock(&wrapped_mutex);
 	zassert_equal(ret, 0, "mutex didn't unlock");
+}
+
+static void atom_set_loop(void *a, void *b, void *c)
+{
+	uint32_t field = (long) a;
+	uint16_t val = 0;
+	k_zync_atom_t atom = {};
+
+	printk("Thread %p field %d\n", k_current_get(), field);
+
+	for(int i = 0; i < 100000; i++) {
+		uint16_t newval = (val + 1) & 0xfff;
+
+		/* Increment our own field, and make sure it is not
+		 * modified by the other thread making a nonatomic
+		 * update
+		 */
+		K_ZYNC_ATOM_SET(&atom) {
+			int old = field == 0 ? (old_atom.val & 0xfff)
+				: (old_atom.val >> 12);
+
+			zassert_equal(old, val,
+				      "Wrong val, expected %d got %d\n", val, old);
+
+			if (field == 0) {
+				new_atom.val &= 0xfffff000;
+				new_atom.val |= newval;
+			} else {
+				new_atom.val &= 0xff000fff;
+				new_atom.val |= (newval << 12);
+			}
+		}
+
+		val = newval;
+	}
+}
+
+/* Stress test of the K_ZYNC_ATOM_SET() utility, spins, setting
+ * independent fields of a single atom from two different CPUs looking
+ * for mixups
+ */
+ZTEST(zync_tests, test_atom_set)
+{
+	if (!IS_ENABLED(CONFIG_SMP)) {
+		ztest_test_skip();
+	}
+
+	k_thread_create(&wait_threads[0], wait_stacks[0],
+			K_THREAD_STACK_SIZEOF(wait_stacks[0]),
+			atom_set_loop, (void *)(long)0, NULL, NULL,
+			0, 0, K_NO_WAIT);
+	atom_set_loop((void *)1, NULL, NULL);
+	k_thread_abort(&wait_threads[0]);
 }
 
 static void *suite_setup(void)
