@@ -97,12 +97,14 @@ struct k_zync {
  *
  * @param atom_ptr Pointer to a k_zync_atom to modify
  */
-#define K_ZYNC_ATOM_SET(atom_ptr)					           \
-	for (k_zync_atom_t old_atom = *(atom_ptr), new_atom = old_atom, exit = {}; \
-	     exit.val == 0;						           \
-	     exit.val = atomic_cas(&(atom_ptr)->atomic,				   \
-				   old_atom.atomic, new_atom.atomic)		   \
-	     , old_atom = *(atom_ptr))
+#define K_ZYNC_ATOM_SET(atom) 							\
+for (k_zync_atom_t old_atom = { .atomic = atomic_get(&(atom)->atomic) },	\
+ 		   new_atom = old_atom, done = {};				\
+     !done.atomic;								\
+     done.atomic = atomic_cas(&(atom)->atomic, old_atom.atomic, new_atom.atomic)\
+     , old_atom.atomic = done.atomic ?						\
+			 old_atom.atomic : atomic_get(&(atom)->atomic) 		\
+     , new_atom = done.atomic ? new_atom : old_atom)
 
 /** @brief Try a zync atom modification
  *
