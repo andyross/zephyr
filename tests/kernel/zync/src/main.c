@@ -141,7 +141,9 @@ ZTEST_USER(zync_tests, test_zync_waiters)
 			      "wrong woken count");
 	}
 
-	k_sleep(K_TICKS(1));
+	for (int i = 0; i < NUM_THREADS; i++) {
+		k_thread_join(&wait_threads[i], K_FOREVER);
+	}
 }
 
 ZTEST_USER(zync_tests, test_zync_wake_all)
@@ -164,6 +166,10 @@ ZTEST_USER(zync_tests, test_zync_wake_all)
 	zassert_equal(awoken_count, NUM_THREADS, "wrong woken count");
 	zassert_equal(awaiting_count, 0, "wrong woken count");
 	zassert_equal(mod_atom.val, 1, "wrong atom value");
+
+	for (int i = 0; i < NUM_THREADS; i++) {
+		k_thread_join(&wait_threads[i], K_FOREVER);
+	}
 }
 
 ZTEST_USER(zync_tests, test_reset_atom)
@@ -277,6 +283,8 @@ ZTEST(zync_tests, test_fair)
 		k_sleep(K_TICKS(1)); /* let thread terminate */
 
 		zassert_equal(awoken_count, 1, "thread didn't resume");
+
+		k_thread_join(&wait_threads[0], K_FOREVER);
 	}
 }
 #endif
@@ -320,6 +328,8 @@ ZTEST(zync_tests, test_prio_boost)
 
 	zassert_equal(k_thread_priority_get(k_current_get()), curr_prio,
 		      "thread priority wasn't restored");
+
+	k_thread_join(&wait_threads[0], K_FOREVER);
 }
 
 ZTEST_USER(zync_tests, test_recursive)
@@ -371,6 +381,7 @@ ZTEST_USER(zync_tests, test_recursive)
 	k_sleep(K_TICKS(1));
 	zassert_equal(awaiting_count, 0, "thread still waiting");
 	zassert_equal(awoken_count, 1, "thread didn't wake up");
+	k_thread_join(&wait_threads[0], K_FOREVER);
 }
 
 /* Not userspace, whiteboxes mutex */
