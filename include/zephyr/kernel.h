@@ -2977,6 +2977,13 @@ static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mute
 
 struct k_sem {
 	struct z_zync_pair zp;
+
+	/* Workaround for an whiteboxed field used in upstream
+	 * libmetal, thankfully not in a way exercised by Zephyr.  Can
+	 * be removed when upstream is patched to use proper k_sem
+	 * APIs
+	 */
+	IF_ENABLED(CONFIG_LIBMETAL, (int8_t count;))
 };
 
 #define K_OBJ_SEM K_OBJ_ZYNC
