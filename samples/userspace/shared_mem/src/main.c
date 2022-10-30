@@ -210,6 +210,7 @@ void enc(void)
 
 	while (1) {
 		k_sem_take(&allforone, K_FOREVER);
+		k_yield();
 		if (fBUFIN == 1) { /* 1 is process text */
 			printk("ENC Thread Received Data\n");
 			/* copy message form shared mem and clear flag */
@@ -288,6 +289,7 @@ void ct(void)
 
 	while (1) {
 		k_sem_take(&allforone, K_FOREVER);
+		k_yield();
 		if (fBUFOUT == 1) {
 			printk("CT Thread Received Message\n");
 			memset((void *)&tbuf, 0, sizeof(tbuf));
