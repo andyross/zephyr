@@ -94,10 +94,10 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	z_object_init(zync);
 }
 
-int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
-		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
+static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
+			   k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout,
+			   k_spinlock_key_t key)
 {
-	k_spinlock_key_t key = k_spin_lock(&zync->lock);
 	bool resched = false, nowait, must_pend;
 	int32_t delta = 0, delta2 = 0, val0 = 0, val1 = 0, pendret = 0, woken;
 
@@ -203,6 +203,14 @@ int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	return pendret < 0 ? pendret : abs(delta);
 }
 
+int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
+		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
+{
+	k_spinlock_key_t key = k_spin_lock(&zync->lock);
+
+	return zync_locked(zync, mod_atom, reset_atom, mod, timeout, key);
+}
+
 void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 {
 	k_spinlock_key_t key = k_spin_lock(&zync->lock);
@@ -242,6 +250,33 @@ int32_t z_impl_z_zync_unlock_ok(struct k_zync *zync)
 	}
 #endif
 	return 0;
+}
+
+int z_impl_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
+			  k_timeout_t timeout)
+{
+	k_spinlock_key_t cvkey = k_spin_lock(&Z_PAIR_ZYNC(&condvar->zp)->lock);
+	k_spinlock_key_t mkey = k_spin_lock(&Z_PAIR_ZYNC(&mutex->zp)->lock);
+
+#ifdef CONFIG_ZYNC_VALIDATE
+	__ASSERT_NO_MSG(Z_PAIR_ATOM(&mutex->zp)->val == 0);
+#endif
+	Z_PAIR_ATOM(&mutex->zp)->val = 1;
+	if (Z_PAIR_ATOM(&mutex->zp)->waiters) {
+		z_sched_wake(&Z_PAIR_ZYNC(&mutex->zp)->waiters, 0, NULL);
+		Z_PAIR_ATOM(&mutex->zp)->waiters = false;
+	}
+	k_spin_unlock(&Z_PAIR_ZYNC(&mutex->zp)->lock, mkey);
+
+	int ret = zync_locked(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp),
+			      NULL, -1, timeout, cvkey);
+
+	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
+	 * was coded originally, and we actually have a test that
+	 * fails if we pass it K_NO_WAIT here.  Seems surprising...
+	 */
+	(void) k_mutex_lock(mutex, K_FOREVER);
+	return ret;
 }
 
 #ifdef CONFIG_USERSPACE

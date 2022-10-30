@@ -2818,7 +2818,10 @@ static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 #if defined(CONFIG_ZYNC_PRIO_BOOST) && defined(CONFIG_ZYNC_VALIDATE)
 	__ASSERT_NO_MSG(Z_PAIR_ZYNC(&mutex->zp)->cfg.prio_boost);
 #endif
-	return z_pzyncmod(&mutex->zp, -1, timeout);
+	int ret;
+	do { ret = z_pzyncmod(&mutex->zp, -1, timeout); }
+	while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
+	return ret;
 }
 
 /**
@@ -2927,19 +2930,8 @@ static inline int k_condvar_broadcast(struct k_condvar *cv)
  * @retval 0 On success
  * @retval -EAGAIN Waiting period timed out.
  */
-static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
-				 k_timeout_t timeout)
-{
-	int ret = k_zync(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp),
-			 Z_PAIR_ATOM(&mutex->zp), -1, timeout);
-
-	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
-	 * was coded originally, and we actually have a test that
-	 * fails if we pass it K_NO_WAIT here.  Seems surprising...
-	 */
-	(void) k_mutex_lock(mutex, K_FOREVER);
-	return ret;
-}
+__syscall int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
+			     k_timeout_t timeout);
 
 /**
  * @brief Statically define and initialize a condition variable.
