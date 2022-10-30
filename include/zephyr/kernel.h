@@ -2846,10 +2846,12 @@ static inline int k_mutex_unlock(struct k_mutex *mutex)
 #ifdef CONFIG_ZYNC_VALIDATE
 	__ASSERT(Z_PAIR_ATOM(&mutex->zp)->val == 0, "mutex not locked");
 #endif
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 	int32_t ret = z_zync_unlock_ok(Z_PAIR_ZYNC(&mutex->zp));
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 	return z_pzyncmod(&mutex->zp, 1, K_NO_WAIT);
 }
 
