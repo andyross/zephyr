@@ -2930,8 +2930,18 @@ static inline int k_condvar_broadcast(struct k_condvar *cv)
  * @retval 0 On success
  * @retval -EAGAIN Waiting period timed out.
  */
-__syscall int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
-			     k_timeout_t timeout);
+static inline int k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
+				 k_timeout_t timeout)
+{
+	int ret= z_pzync_condwait(&condvar->zp, &mutex->zp, timeout);
+
+	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
+	 * was coded originally, and we actually have a test that
+	 * fails if we pass it K_NO_WAIT here.  Seems surprising...
+	 */
+	(void) k_mutex_lock(mutex, K_FOREVER);
+	return ret;
+}
 
 /**
  * @brief Statically define and initialize a condition variable.

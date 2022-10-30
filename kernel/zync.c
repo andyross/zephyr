@@ -252,31 +252,24 @@ int32_t z_impl_z_zync_unlock_ok(struct k_zync *zync)
 	return 0;
 }
 
-int z_impl_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
-			  k_timeout_t timeout)
+int z_impl_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
+			    k_timeout_t timeout)
 {
-	k_spinlock_key_t cvkey = k_spin_lock(&Z_PAIR_ZYNC(&condvar->zp)->lock);
-	k_spinlock_key_t mkey = k_spin_lock(&Z_PAIR_ZYNC(&mutex->zp)->lock);
+	k_spinlock_key_t cvkey = k_spin_lock(&Z_PAIR_ZYNC(cv)->lock);
+	k_spinlock_key_t mkey = k_spin_lock(&Z_PAIR_ZYNC(mut)->lock);
 
 #ifdef CONFIG_ZYNC_VALIDATE
-	__ASSERT_NO_MSG(Z_PAIR_ATOM(&mutex->zp)->val == 0);
+	__ASSERT_NO_MSG(Z_PAIR_ATOM(mut)->val == 0);
 #endif
-	Z_PAIR_ATOM(&mutex->zp)->val = 1;
-	if (Z_PAIR_ATOM(&mutex->zp)->waiters) {
-		z_sched_wake(&Z_PAIR_ZYNC(&mutex->zp)->waiters, 0, NULL);
-		Z_PAIR_ATOM(&mutex->zp)->waiters = false;
+	Z_PAIR_ATOM(mut)->val = 1;
+	if (Z_PAIR_ATOM(mut)->waiters) {
+		z_sched_wake(&Z_PAIR_ZYNC(mut)->waiters, 0, NULL);
+		Z_PAIR_ATOM(mut)->waiters = false;
 	}
-	k_spin_unlock(&Z_PAIR_ZYNC(&mutex->zp)->lock, mkey);
+	k_spin_unlock(&Z_PAIR_ZYNC(mut)->lock, mkey);
 
-	int ret = zync_locked(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp),
-			      NULL, -1, timeout, cvkey);
-
-	/* K_FOREVER (i.e. ignoring the user timeout) is the way this
-	 * was coded originally, and we actually have a test that
-	 * fails if we pass it K_NO_WAIT here.  Seems surprising...
-	 */
-	(void) k_mutex_lock(mutex, K_FOREVER);
-	return ret;
+	return zync_locked(Z_PAIR_ZYNC(cv), Z_PAIR_ATOM(cv),
+			   NULL, -1, timeout, cvkey);
 }
 
 #ifdef CONFIG_USERSPACE
@@ -342,6 +335,28 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	return z_impl_k_zync(zync, mod_atom, reset_atom, mod, timeout);
 }
 #include <syscalls/k_zync_mrsh.c>
+
+static void chk_pair(struct z_zync_pair *p)
+{
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+	Z_OOPS(Z_SYSCALL_OBJ(p, K_OBJ_ZYNC));
+#else
+	struct k_zync *zptr;
+
+	Z_OOPS(z_user_from_copy(&zptr, &p->zync, sizeof(*zptr)));
+	Z_OOPS(Z_SYSCALL_OBJ(zptr, K_OBJ_ZYNC));
+	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(&p->atom, sizeof(*atom)));
+#endif
+}
+
+int z_vrfy_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
+			    k_timeout_t timeout)
+{
+	chk_pair(cv);
+	chk_pair(mut);
+	return z_impl_z_pzync_condwait(cv, mut, timeout);
+}
+#include <syscalls/z_pzync_condwait_mrsh.c>
 
 void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 {
