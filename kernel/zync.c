@@ -260,6 +260,14 @@ int z_impl_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 
 #ifdef CONFIG_ZYNC_VALIDATE
 	__ASSERT_NO_MSG(Z_PAIR_ATOM(mut)->val == 0);
+#ifdef CONFIG_ZYNC_RECURSIVE
+	/* This never worked, and is incredibly dangerous to support,
+	 * it would mean that an outer context, which may have no idea
+	 * a condition variable is in use, would have its lock broken
+	 * and then be put to sleep by the code it called!
+	 */
+	__ASSERT(Z_PAIR_ZYNC(mut)->rec_count == 0, "never condwait on recursive locks");
+#endif
 #endif
 	Z_PAIR_ATOM(mut)->val = 1;
 	IF_ENABLED(Z_ZYNC_OWNER, (Z_PAIR_ZYNC(mut)->owner = NULL));
