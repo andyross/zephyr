@@ -333,8 +333,11 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 	return ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
 }
 
-/* Low level "wait on condition variable" utility, but unlike
- * k_condvar_wait() it does not reacquire the mutex
+/* Low level "wait on condition variable" utility.  Atomically: resets
+ * (sets to 1) the "mut" zync, wakes up a waiting thread if there is
+ * one, and pends on the "cv" zync.  Unlike k_condvar_wait() it does
+ * not reacquire the mutex on exit.  The return value is as per
+ * k_zync.
  */
 __syscall int z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 			       k_timeout_t timeout);
