@@ -262,6 +262,7 @@ int z_impl_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 	__ASSERT_NO_MSG(Z_PAIR_ATOM(mut)->val == 0);
 #endif
 	Z_PAIR_ATOM(mut)->val = 1;
+	IF_ENABLED(Z_ZYNC_OWNER, (Z_PAIR_ZYNC(mut)->owner = NULL));
 	if (Z_PAIR_ATOM(mut)->waiters) {
 		z_sched_wake(&Z_PAIR_ZYNC(mut)->waiters, 0, NULL);
 		Z_PAIR_ATOM(mut)->waiters = false;
