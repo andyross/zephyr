@@ -35,7 +35,7 @@ static void prio_boost_reset(struct k_zync *zync)
 #endif
 }
 
-static void set_owner(struct k_zync *zync)
+static void new_owner(struct k_zync *zync)
 {
 #ifdef Z_ZYNC_OWNER
 # ifdef CONFIG_ZYNC_PRIO_BOOST
@@ -48,6 +48,11 @@ static void set_owner(struct k_zync *zync)
 # endif
 	zync->owner = _current;
 #endif
+}
+
+static void set_owner(struct k_zync *zync, struct k_thread *val)
+{
+	IF_ENABLED(Z_ZYNC_OWNER, (zync->owner = val));
 }
 
 static inline int32_t modclamp(struct k_zync *zync, int32_t mod)
@@ -94,27 +99,48 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	z_object_init(zync);
 }
 
-static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
-			   bool reset_atom, int32_t mod, k_timeout_t timeout,
-			   k_spinlock_key_t key)
+static bool try_recursion(struct k_zync *zync, int32_t mod)
 {
-	bool resched = false, nowait, must_pend;
-	int32_t delta = 0, delta2 = 0, val0 = 0, val1 = 0, pendret = 0, woken;
-
 #ifdef CONFIG_ZYNC_RECURSIVE
 	if (zync->cfg.recursive) {
 		__ASSERT(abs(mod) == 1, "recursive locks aren't semaphores");
 		if (mod > 0 && zync->rec_count > 0) {
 			zync->rec_count--;
-			k_spin_unlock(&zync->lock, key);
-			return 1;
+			return true;
 		} else if (mod < 0 && _current == zync->owner) {
 			zync->rec_count++;
-			k_spin_unlock(&zync->lock, key);
-			return 1;
+			return true;
 		}
 	}
 #endif
+	return false;
+}
+
+static bool handle_poll(struct k_zync *zync, int32_t val0, int32_t val1)
+{
+	bool resched = false;
+
+#ifdef CONFIG_POLL
+	if (val1 > 0 && val0 == 0) {
+		z_handle_obj_poll_events(&zync->poll_events, K_POLL_STATE_ZYNC);
+		resched = true;
+	}
+	zync->pollable = (val1 != 0);
+#endif
+	return resched;
+}
+
+static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
+			   bool reset_atom, int32_t mod, k_timeout_t timeout,
+			   k_spinlock_key_t key)
+{
+	bool resched, must_pend, nowait = K_TIMEOUT_EQ(timeout, Z_TIMEOUT_NO_WAIT);
+	int32_t delta = 0, delta2 = 0, val0 = 0, val1 = 0, pendret = 0, woken;
+
+	if (try_recursion(zync, mod)) {
+		k_spin_unlock(&zync->lock, key);
+		return 1;
+	}
 
 	K_ZYNC_ATOM_SET(mod_atom) {
 		val0 = old_atom.val;
@@ -124,26 +150,17 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		new_atom.waiters = mod < 0 && delta != mod;
 	}
 
-	nowait = K_TIMEOUT_EQ(timeout, Z_TIMEOUT_NO_WAIT);
 	must_pend = mod < 0 && mod != delta;
 
-#ifdef Z_ZYNC_OWNER
 	if (val1 > 0) {
-		zync->owner = NULL;
+		set_owner(zync, NULL);
 	}
-#endif
 
 	if (delta > 0) {
 		prio_boost_reset(zync);
 	}
 
-#ifdef CONFIG_POLL
-	if (delta > 0 && val0 == 0) {
-		z_handle_obj_poll_events(&zync->poll_events, K_POLL_STATE_ZYNC);
-		resched = true;
-	}
-	zync->pollable = (val1 != 0);
-#endif
+	resched = handle_poll(zync, val0, val1);
 
 	Z_WAIT_Q_LAZY_INIT(&zync->waiters);
 	for (woken = 0; woken < delta; woken++) {
@@ -164,23 +181,24 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		}
 	}
 
-	if (must_pend && !nowait) {
-		prio_boost(zync, _current->base.prio);
-		pendret = z_pend_curr(&zync->lock, key, &zync->waiters, timeout);
-		key = k_spin_lock(&zync->lock);
-
-		mod -= delta;
-		K_ZYNC_ATOM_SET(mod_atom) {
-			new_atom.val = modclamp(zync, old_atom.val + mod);
-			delta2 = new_atom.val - old_atom.val;
-		}
-		delta += delta2;
-	} else if (must_pend && nowait) {
+	if (must_pend) {
 		pendret = -EAGAIN;
+		if (!nowait) {
+			prio_boost(zync, _current->base.prio);
+			pendret = z_pend_curr(&zync->lock, key, &zync->waiters, timeout);
+			key = k_spin_lock(&zync->lock);
+
+			mod -= delta;
+			K_ZYNC_ATOM_SET(mod_atom) {
+				new_atom.val = modclamp(zync, old_atom.val + mod);
+				delta2 = new_atom.val - old_atom.val;
+			}
+			delta += delta2;
+		}
 	}
 
 	if (delta < 0) {
-		set_owner(zync);
+		new_owner(zync);
 	}
 
 	if (resched && zync->cfg.fair) {
@@ -210,7 +228,7 @@ void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 	}
 
 	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (zync->rec_count = 0));
-	IF_ENABLED(Z_ZYNC_OWNER,          (zync->owner = NULL));
+	set_owner(zync, NULL);
 
 	k_spin_unlock(&zync->lock, key);
 }
@@ -258,7 +276,7 @@ int z_impl_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 #endif
 #endif
 	Z_PAIR_ATOM(mut)->val = 1;
-	IF_ENABLED(Z_ZYNC_OWNER, (Z_PAIR_ZYNC(mut)->owner = NULL));
+	set_owner(Z_PAIR_ZYNC(mut), NULL);
 	if (Z_PAIR_ATOM(mut)->waiters) {
 		z_sched_wake(&Z_PAIR_ZYNC(mut)->waiters, 0, NULL);
 		Z_PAIR_ATOM(mut)->waiters = false;
