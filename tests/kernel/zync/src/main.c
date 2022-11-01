@@ -39,7 +39,6 @@ static void wait_thread_fn(void *pa, void *pb, void *pc)
 
 	atomic_inc(&awaiting_count);
 	ret = k_zync(&zync, &mod_atom, NULL, -1, K_FOREVER);
-
 	zassert_equal(ret, 1, "wrong return from k_zync()");
 	atomic_dec(&awaiting_count);
 	atomic_inc(&awoken_count);
@@ -375,10 +374,10 @@ ZTEST_USER(zync_tests, test_recursive)
 	}
 
 	k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
-	zassert_equal(mod_atom.val, 1, "recursive zync didn't unlock");
 
 	/* now the thread can get it */
 	k_sleep(K_TICKS(1));
+	zassert_equal(mod_atom.val, 0, "zync not locked");
 	zassert_equal(awaiting_count, 0, "thread still waiting");
 	zassert_equal(awoken_count, 1, "thread didn't wake up");
 	k_thread_join(&wait_threads[0], K_FOREVER);
