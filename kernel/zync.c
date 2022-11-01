@@ -237,7 +237,6 @@ uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 {
 	return zync->atom.val;
 }
-#endif
 
 int32_t z_impl_z_zync_unlock_ok(struct k_zync *zync)
 {
@@ -251,6 +250,7 @@ int32_t z_impl_z_zync_unlock_ok(struct k_zync *zync)
 #endif
 	return 0;
 }
+#endif
 
 int z_impl_z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 			    k_timeout_t timeout)
@@ -389,7 +389,6 @@ uint32_t z_vrfy_z_zync_atom_val(struct k_zync *zync)
 	return z_impl_z_zync_atom_val(zync);
 }
 #include <syscalls/z_zync_atom_val_mrsh.c>
-#endif
 
 int32_t z_vrfy_z_zync_unlock_ok(struct k_zync *zync)
 {
@@ -397,5 +396,6 @@ int32_t z_vrfy_z_zync_unlock_ok(struct k_zync *zync)
 	return z_impl_z_zync_unlock_ok(zync);
 }
 #include <syscalls/z_zync_unlock_ok_mrsh.c>
+#endif /* USERSPACE_COMPAT */
 
 #endif /* CONFIG_USERSPACE */
