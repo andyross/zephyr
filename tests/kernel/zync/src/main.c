@@ -178,15 +178,6 @@ ZTEST_USER(zync_tests, test_reset_atom)
 	reset_zync(NULL);
 	reset_atom.val = 2;
 
-	/* reset_atom != mod_atom */
-	ret = k_zync(&zync, &mod_atom, &reset_atom, 1, K_NO_WAIT);
-	zassert_equal(ret, 1, "wrong return value: %d", ret);
-	zassert_equal(reset_atom.val, 1, "wrong reset atom value");
-	zassert_equal(mod_atom.val, 1, "atom value didn't increment");
-
-	k_zync_reset(&zync, &mod_atom);
-
-	/* reset_atom == mod_atom (note different return!) */
 	ret = k_zync(&zync, &mod_atom, &mod_atom, 1, K_NO_WAIT);
 	zassert_equal(ret, 0, "wrong return value");
 	zassert_equal(mod_atom.val, 0, "atom value didn't remain zero");

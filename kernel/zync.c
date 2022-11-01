@@ -120,7 +120,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		val0 = old_atom.val;
 		val1 = modclamp(zync, val0 + mod);
 		delta = val1 - val0;
-		new_atom.val = (mod_atom == reset_atom) ? 0 : val1;
+		new_atom.val = (reset_atom == NULL) ? val1 : 0;
 		new_atom.waiters = mod < 0 && delta != mod;
 	}
 
@@ -154,25 +154,13 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	}
 
 	/* Old condvar API wants the count of threads woken as the return value */
-	if (delta >= 0 && mod_atom == reset_atom) {
+	if (delta >= 0 && reset_atom != NULL) {
 		delta = woken;
 	}
 
 	if (resched) {
 		K_ZYNC_ATOM_SET(mod_atom) {
 			new_atom.waiters = z_waitq_head(&zync->waiters) != NULL;
-		}
-	}
-
-	if (reset_atom != NULL) {
-		uint32_t newval = reset_atom == mod_atom ? 0 : 1;
-
-		if (IS_ENABLED(CONFIG_ZYNC_VALIDATE)) {
-			__ASSERT(newval == 0 || newval != reset_atom->val,
-				 "noop zync reset (mislocked condvar?)");
-		}
-		K_ZYNC_ATOM_SET(reset_atom) {
-			new_atom.val = newval;
 		}
 	}
 
