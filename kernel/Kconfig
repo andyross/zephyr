@@ -313,6 +313,7 @@ endchoice # WAITQ_ALGORITHM
 
 config ZYNC_VALIDATE
 	bool "Enable k_zync validation layer"
+	default n if PICOLIBC
 	default y if ASSERT && !USERSPACE
 	help
 	  The zync facility includes a simple validation layer to
@@ -320,7 +321,8 @@ config ZYNC_VALIDATE
 	  thread, recursively locking (non-recursive) zyncs, failing
 	  to hold the wrapper lock in condition variables, etc...
 	  This has significant performance impact when USERSPACE is
-	  enabled and needs to be enabled manually.
+	  enabled and needs to be enabled manually.  Disabled when
+	  PICOLIBC=y to work around #51827
 
 config ZYNC_USERSPACE_COMPAT
 	bool "Enable legacy userspace API for defining zyncs"
