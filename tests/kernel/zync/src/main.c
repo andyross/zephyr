@@ -38,7 +38,7 @@ static void wait_thread_fn(void *pa, void *pb, void *pc)
 	int ret;
 
 	atomic_inc(&awaiting_count);
-	ret = k_zync(&zync, &mod_atom, NULL, -1, K_FOREVER);
+	ret = k_zync(&zync, &mod_atom, false, -1, K_FOREVER);
 	zassert_equal(ret, 1, "wrong return from k_zync()");
 	atomic_dec(&awaiting_count);
 	atomic_inc(&awoken_count);
@@ -58,9 +58,9 @@ ZTEST_USER(zync_tests, test_zync0_updown)
 	reset_zync(NULL);
 
 	zassert_true(mod_atom.val == 0, "wrong init val");
-	k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, 1, K_NO_WAIT);
 	zassert_true(mod_atom.val == 1, "val didn't increment");
-	k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, -1, K_NO_WAIT);
 	zassert_true(mod_atom.val == 0, "val didn't decrement");
 }
 
@@ -72,14 +72,14 @@ ZTEST_USER(zync_tests, test_zync_downfail)
 
 	zassert_true(mod_atom.val == 0, "atom not zero");
 
-	ret = k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
+	ret = k_zync(&zync, &mod_atom, false, -1, K_NO_WAIT);
 
 	zassert_true(ret == -EAGAIN, "wrong return value");
 	zassert_true(mod_atom.val == 0, "atom changed unexpectedly");
 
 	k_usleep(1); /* tick align */
 	t0 = (int32_t) k_uptime_ticks();
-	ret = k_zync(&zync, &mod_atom, NULL, -1, K_TICKS(1));
+	ret = k_zync(&zync, &mod_atom, false, -1, K_TICKS(1));
 	t1 = (int32_t) k_uptime_ticks();
 
 	zassert_true(ret == -EAGAIN, "wrong return value: %d", ret);
@@ -94,10 +94,10 @@ ZTEST_USER(zync_tests, test_zync_updown_n)
 
 	reset_zync(&cfg);
 
-	k_zync(&zync, &mod_atom, NULL, count, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, count, K_NO_WAIT);
 	zassert_true(mod_atom.val == count, "wrong atom val");
 
-	k_zync(&zync, &mod_atom, NULL, count2, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, count2, K_NO_WAIT);
 	zassert_true(mod_atom.val == count + count2, "wrong atom val");
 
 #ifdef CONFIG_ZYNC_MAX_VAL
@@ -106,7 +106,7 @@ ZTEST_USER(zync_tests, test_zync_updown_n)
 	cfg.max_val = max;
 	k_zync_set_config(&zync, &cfg);
 
-	k_zync(&zync, &mod_atom, NULL, 2 * max, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, 2 * max, K_NO_WAIT);
 	zassert_true(mod_atom.val == max, "wrong atom val: %d", mod_atom.val);
 
 	cfg.max_val = 0;
@@ -160,7 +160,7 @@ ZTEST_USER(zync_tests, test_zync_wake_all)
 	zassert_equal(awoken_count, 0, "someone woke up");
 	zassert_equal(awaiting_count, NUM_THREADS, "wrong count of wait threads");
 
-	k_zync(&zync, &mod_atom, NULL, NUM_THREADS + 1, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, NUM_THREADS + 1, K_NO_WAIT);
 	k_sleep(K_TICKS(NUM_THREADS)); /* be generous, there are a lot of threads */
 	zassert_equal(awoken_count, NUM_THREADS, "wrong woken count");
 	zassert_equal(awaiting_count, 0, "wrong woken count");
@@ -178,7 +178,7 @@ ZTEST_USER(zync_tests, test_reset_atom)
 	reset_zync(NULL);
 	reset_atom.val = 2;
 
-	ret = k_zync(&zync, &mod_atom, &mod_atom, 1, K_NO_WAIT);
+	ret = k_zync(&zync, &mod_atom, true, 1, K_NO_WAIT);
 	zassert_equal(ret, 0, "wrong return value");
 	zassert_equal(mod_atom.val, 0, "atom value didn't remain zero");
 }
@@ -262,7 +262,7 @@ ZTEST(zync_tests, test_fair)
 		zassert_equal(awaiting_count, 1, "thread didn't run");
 
 		/* Wake it up, see if we're preempted */
-		k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
+		k_zync(&zync, &mod_atom, false, 1, K_NO_WAIT);
 
 		if (is_fair) {
 			zassert_equal(awoken_count, 1, "thread didn't run");
@@ -299,7 +299,7 @@ ZTEST(zync_tests, test_prio_boost)
 
 	/* "Take the lock" */
 	mod_atom.val = 1;
-	k_zync(&zync, &mod_atom, NULL, -1, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, -1, K_NO_WAIT);
 
 	zassert_equal(k_thread_priority_get(k_current_get()), curr_prio,
 		      "thread priority changed unexpectedly");
@@ -314,7 +314,7 @@ ZTEST(zync_tests, test_prio_boost)
 		      "thread priority didn't boost");
 
 	/* Wake it up, check our priority resets */
-	k_zync(&zync, &mod_atom, NULL, 1, K_NO_WAIT);
+	k_zync(&zync, &mod_atom, false, 1, K_NO_WAIT);
 
 	zassert_equal(k_thread_priority_get(k_current_get()), curr_prio,
 		      "thread priority wasn't restored");

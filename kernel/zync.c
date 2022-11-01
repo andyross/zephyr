@@ -95,7 +95,7 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 }
 
 static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
-			   k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout,
+			   bool reset_atom, int32_t mod, k_timeout_t timeout,
 			   k_spinlock_key_t key)
 {
 	bool resched = false, nowait, must_pend;
@@ -120,7 +120,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 		val0 = old_atom.val;
 		val1 = modclamp(zync, val0 + mod);
 		delta = val1 - val0;
-		new_atom.val = (reset_atom == NULL) ? val1 : 0;
+		new_atom.val = reset_atom ? 0 : val1;
 		new_atom.waiters = mod < 0 && delta != mod;
 	}
 
@@ -154,7 +154,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	}
 
 	/* Old condvar API wants the count of threads woken as the return value */
-	if (delta >= 0 && reset_atom != NULL) {
+	if (delta >= 0 && reset_atom) {
 		delta = woken;
 	}
 
@@ -192,7 +192,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 }
 
 int32_t z_impl_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
-		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
+		      bool reset_atom, int32_t mod, k_timeout_t timeout)
 {
 	k_spinlock_key_t key = k_spin_lock(&zync->lock);
 
@@ -218,7 +218,7 @@ void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 int32_t z_impl_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
-	return k_zync(zync, &zync->atom, NULL, mod, timeout);
+	return k_zync(zync, &zync->atom, false, mod, timeout);
 }
 
 uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
@@ -312,23 +312,10 @@ void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 #include <syscalls/k_zync_init_mrsh.c>
 
 int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
-		      k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t timeout)
+		      bool reset_atom, int32_t mod, k_timeout_t timeout)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
 	chk_atom(zync, mod_atom);
-	if (reset_atom != NULL) {
-		int ret = -1;
-
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
-		/* may be an atom field of a valid zync */
-		ret = Z_SYSCALL_OBJ(CONTAINER_OF(reset_atom, struct k_zync, atom),
-				    K_OBJ_ZYNC);
-#endif
-		if (ret) {
-			ret = Z_SYSCALL_MEMORY_WRITE(reset_atom, sizeof(*reset_atom));
-		}
-		Z_OOPS(ret);
-	}
 	return z_impl_k_zync(zync, mod_atom, reset_atom, mod, timeout);
 }
 #include <syscalls/k_zync_mrsh.c>

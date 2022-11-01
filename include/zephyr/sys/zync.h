@@ -210,12 +210,12 @@ __syscall void k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom);
  * 2. Wake up one thread from the zync wait queue (if any exist) for
  *    each unit of increase of the ``val`` field of "mod_atom".
  *
- * 3. Atomically set the "val" field of the "reset_atom" argument.
- *    These atom arguments may be identical, in which case the "reset"
- *    behavior takes precedence, and the "mod_atom" argument will
- *    never be seen to change by external code.  The value set in the
- *    field will be zero if the arguments are identical ("prevent
- *    semaphore counting") or one otherwise ("release a lock").
+ * 3. If the "reset_atom" argument is true, atomically set the "val"
+ *    field of "mod_atom" to zero.  The atom value will never be seen
+ *    to change by external code in other ways, regardless of the
+ *    value of "mod".  Effectively this causes the zync to act as a
+ *    wakeup source (as for e.g. condition variables), but without
+ *    maintaining a "semaphore count".
  *
  * 4. If the "mod" step above would have caused the "mod_atom" value
  *    to be negative before clamping, the current thread will pend on
@@ -263,7 +263,7 @@ __syscall void k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom);
  *         from the pend operation).
  */
 __syscall int32_t k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
-			 k_zync_atom_t *reset_atom, int32_t mod, k_timeout_t to);
+			 bool reset_atom, int32_t mod, k_timeout_t to);
 
 /* In practice, zyncs and atoms are always used togather; z_zync_pair
  * is an internal utility to manage this arrangement for the benefit
@@ -328,16 +328,15 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 	if (IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
 		ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
 	} else if (!k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
-		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), NULL, mod, timeout);
+		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), false, mod, timeout);
 	}
 	return ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
 }
 
-/* Low level "wait on condition variable" utility.  Atomically: resets
- * (sets to 1) the "mut" zync, wakes up a waiting thread if there is
- * one, and pends on the "cv" zync.  Unlike k_condvar_wait() it does
- * not reacquire the mutex on exit.  The return value is as per
- * k_zync.
+/* Low level "wait on condition variable" utility.  Atomically: sets
+ * the "mut" zync to 1, wakes up a waiting thread if there is one, and
+ * pends on the "cv" zync.  Unlike k_condvar_wait() it does not
+ * reacquire the mutex on exit.  The return value is as per k_zync.
  */
 __syscall int z_pzync_condwait(struct z_zync_pair *cv, struct z_zync_pair *mut,
 			       k_timeout_t timeout);

@@ -2819,8 +2819,10 @@ static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 	__ASSERT_NO_MSG(Z_PAIR_ZYNC(&mutex->zp)->cfg.prio_boost);
 #endif
 	int ret;
-	do { ret = z_pzyncmod(&mutex->zp, -1, timeout); }
-	while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
+
+	do {
+		ret = z_pzyncmod(&mutex->zp, -1, timeout);
+	} while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
 	return ret;
 }
 
@@ -2847,6 +2849,9 @@ static inline int k_mutex_unlock(struct k_mutex *mutex)
 	__ASSERT(Z_PAIR_ATOM(&mutex->zp)->val == 0, "mutex not locked");
 #endif
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+	/* Synthesize "soft failure" return codes.  Needed by current
+	 * tests, consider wrapping into ZYNC_VALIDATE.
+	 */
 	int32_t ret = z_zync_unlock_ok(Z_PAIR_ZYNC(&mutex->zp));
 	if (ret != 0) {
 		return ret;
@@ -2897,8 +2902,7 @@ static inline int k_condvar_init(struct k_condvar *condvar)
  */
 static inline int k_condvar_signal(struct k_condvar *cv)
 {
-	k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), Z_PAIR_ATOM(&cv->zp),
-	       1, K_NO_WAIT);
+	k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), true, 1, K_NO_WAIT);
 	return 0;
 }
 
@@ -2911,7 +2915,7 @@ static inline int k_condvar_signal(struct k_condvar *cv)
  */
 static inline int k_condvar_broadcast(struct k_condvar *cv)
 {
-	return k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), Z_PAIR_ATOM(&cv->zp),
+	return k_zync(Z_PAIR_ZYNC(&cv->zp), Z_PAIR_ATOM(&cv->zp), true,
 		      K_ZYNC_ATOM_VAL_MAX, K_NO_WAIT);
 }
 
