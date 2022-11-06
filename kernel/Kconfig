@@ -326,29 +326,41 @@ config ZYNC_VALIDATE
 
 config ZYNC_USERSPACE_COMPAT
 	bool "Enable legacy userspace API for defining zyncs"
-	default y if USERSPACE
-	default y if NET_MGMT_EVENT
-	default y if USB_DEVICE_STACK
-	default y if CAN
-	default y if PM_DEVICE
-	default y if ADC
-	default y if ETH_ENC424J600
-	default y if GPIO_PCA953X
-	default y if NET_BUF
-	default y if EEPROM
-	default y if MPSC_PBUF
-	default y if BT_HCI_HOST
-	default y if ZEPHYR_CHRE_MODULE
+	#default y if USERSPACE
+	#default y if NET_MGMT_EVENT
+	#default y if USB_DEVICE_STACK
+	#default y if CAN
+	#default y if PM_DEVICE
+	#default y if ADC
+	#default y if ETH_ENC424J600
+	#default y if GPIO_PCA953X
+	#default y if NET_BUF
+	#default y if EEPROM
+	#default y if MPSC_PBUF
+	#default y if BT_HCI_HOST
+	#default y if ZEPHYR_CHRE_MODULE
 	help
-	  When true, zync objects (and thus zync-derived IPC objects
-	  like mutexes and semaphores) will always include their own
-	  atom in the object.  This allows them to be defined in
-	  userspace code using the traditional APIs (which are not
-	  capable of specifying an address space for the atom), at the
-	  significant cost of requiring every zync operation to be a
-	  syscall.  Only select this as a migration assistant;
-	  existing code should use xxx_USER_DEFINE() wherever possible
-	  to realize the performance benefits of zync.
+	  When true, k_sem/mutex/condvar objects defined with
+	  K_xxx_DEFINE() macros will be usable as kernel objects from
+	  any userspace thread with access.  This was the traditional
+	  API, but as it requires the atom be stored in kernel space
+	  it has a severe performance pentaly vs. "natural" zync
+	  usage.  All operations on all zyncs need to be system calls!
+	  Only select this as a migration assistant; code should use
+	  xxx_USER_DEFINE() (a trivial API change) to realize the
+	  performance benefits of zync.
+
+config MAX_DYN_ZYNCS
+	int
+	default 0 if DYNAMIC_OBJECTS
+	default 32
+	help
+	  Zync "pairs" used to implement k_sem/mutex/condvar are
+	  userspace structs, and (if not defined using a
+	  xxx_USER_DEFINE() macro) associate themselves with kernel
+	  objects dynamically at initialization time.  This is done
+	  with dynamic kernel objects when enabled, otherwise with a
+	  simple allocate-only pool.
 
 config ZYNC_PRIO_BOOST
 	bool "Enable Zync priority inheritance algorithm"

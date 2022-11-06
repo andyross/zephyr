@@ -2785,7 +2785,7 @@ static inline int k_mutex_init(struct k_mutex *mutex)
 		IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (.recursive = true,))
 	};
 
-        k_zync_init(Z_PAIR_ZYNC(&mutex->zp), Z_PAIR_ATOM(&mutex->zp), &cfg);
+        z_pzync_init(&mutex->zp, &cfg);
 	return 0;
 }
 
@@ -2892,7 +2892,7 @@ static inline int k_condvar_init(struct k_condvar *condvar)
 {
 	struct k_zync_cfg cfg = { .fair = true };
 
-	k_zync_init(Z_PAIR_ZYNC(&condvar->zp), Z_PAIR_ATOM(&condvar->zp), &cfg);
+	z_pzync_init(&condvar->zp, &cfg);
 	return 0;
 }
 
@@ -3047,11 +3047,11 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
 		IF_ENABLED(CONFIG_ZYNC_MAX_VAL, (.max_val = limit,))
 	};
 
-	k_zync_init(Z_PAIR_ZYNC(&sem->zp), Z_PAIR_ATOM(&sem->zp), &cfg);
-
 	if (limit > K_ZYNC_ATOM_VAL_MAX || limit == 0 || initial_count > limit) {
 		return -EINVAL;
 	}
+
+	z_pzync_init(&sem->zp, &cfg);
 
 	return 0;
 }

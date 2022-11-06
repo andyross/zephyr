@@ -99,6 +99,11 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	z_object_init(zync);
 }
 
+void z_impl_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
+{
+	k_zync_init(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), cfg);
+}
+
 static bool try_recursion(struct k_zync *zync, int32_t mod)
 {
 #ifdef CONFIG_ZYNC_RECURSIVE
@@ -318,10 +323,6 @@ static void chk_atom(struct k_zync *zync, k_zync_atom_t *atom)
 void z_vrfy_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 			struct k_zync_cfg *cfg)
 {
-	if (IS_ENABLED(CONFIG_ZYNC_VALIDATE) &&
-	    !IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
-		__ASSERT(zync != NULL, "NULL zync, need ZYNC_USERSPACE_COMPAT?");
-	}
 	Z_OOPS(Z_SYSCALL_OBJ_INIT(zync, K_OBJ_ZYNC));
 	chk_atom(zync, atom);
 	Z_OOPS(Z_SYSCALL_MEMORY_READ(cfg, sizeof(*cfg)));
@@ -347,7 +348,7 @@ static void chk_pair(struct z_zync_pair *p)
 
 	Z_OOPS(z_user_from_copy(&zptr, &p->zync, sizeof(*zptr)));
 	Z_OOPS(Z_SYSCALL_OBJ(zptr, K_OBJ_ZYNC));
-	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(&p->atom, sizeof(*atom)));
+	Z_OOPS(Z_SYSCALL_MEMORY_WRITE(&p->atom, sizeof(p->atom)));
 #endif
 }
 
@@ -367,6 +368,37 @@ void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 	z_impl_k_zync_reset(zync, atom);
 }
 #include <syscalls/k_zync_reset_mrsh.c>
+
+#ifndef CONFIG_DYNAMIC_OBJECTS
+static struct k_zync zync_pool[CONFIG_MAX_DYN_ZYNCS];
+static uint32_t num_pool_zyncs;
+#endif
+
+void z_vrfy_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
+{
+#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+	z_vrfy_k_zync_init(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), cfg);
+#else
+	struct z_zync_pair kzp;
+
+	Z_OOPS(z_user_from_copy(&kzp, zp, sizeof(kzp)));
+	if (kzp.zync == NULL) {
+#ifdef CONFIG_DYNAMIC_OBJECTS
+		kzp.zync = k_object_alloc(K_OBJ_ZYNC);
+#else
+		if(num_pool_zyncs < ARRAY_SIZE(zync_pool)) {
+			kzp.zync = &zync_pool[num_pool_zyncs++];
+		}
+#endif
+		k_object_access_grant(kzp.zync, _current);
+		Z_OOPS(z_user_to_copy(zp, &kzp, sizeof(kzp)));
+	}
+	Z_OOPS(Z_SYSCALL_OBJ_INIT(kzp.zync, K_OBJ_ZYNC));
+
+	z_impl_z_pzync_init(zp, cfg);
+#endif
+}
+#include <syscalls/z_pzync_init_mrsh.c>
 
 #ifdef CONFIG_ZYNC_USERSPACE_COMPAT
 int32_t z_vrfy_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)

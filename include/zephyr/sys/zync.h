@@ -319,6 +319,7 @@ struct z_zync_pair {
 #endif
 
 __syscall int32_t z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout);
+__syscall void z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg);
 
 static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 				 k_timeout_t timeout)
@@ -327,10 +328,12 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 
 	if (IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
 		ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
-	} else if (!k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
+	} else if (k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
+		return 0;
+	} else {
 		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), false, mod, timeout);
 	}
-	return ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
+	return ret = ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
 }
 
 /* Low level "wait on condition variable" utility.  Atomically: sets
