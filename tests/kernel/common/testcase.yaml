@@ -16,6 +16,7 @@ tests:
       - native_posix
     extra_configs:
       - CONFIG_MISRA_SANE=y
+      - CONFIG_WAITQ_SCALABLE=n
   kernel.common.nano32:
     filter: not CONFIG_KERNEL_COHERENCE
     extra_configs:
