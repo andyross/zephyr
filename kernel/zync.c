@@ -7,6 +7,11 @@
 #include <zephyr/wait_q.h>
 #include <zephyr/syscall_handler.h>
 
+#if !defined(Z_ZYNC_INTERNAL_ATOM) && !defined(CONFIG_DYNAMIC_OBJECTS)
+static struct k_zync zync_pool[CONFIG_MAX_DYN_ZYNCS];
+static uint32_t num_pool_zyncs;
+#endif
+
 /* Sets the priority of the zync owner (if it exists) to the highest
  * logical priority of the pri argument, the thread's base priority,
  * and the highest priority waiting thread
@@ -394,11 +399,6 @@ void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 	z_impl_k_zync_reset(zync, atom);
 }
 #include <syscalls/k_zync_reset_mrsh.c>
-
-#if defined(Z_ZYNC_INTERNAL_ATOM) && !defined(CONFIG_DYNAMIC_OBJECTS)
-static struct k_zync zync_pool[CONFIG_MAX_DYN_ZYNCS];
-static uint32_t num_pool_zyncs;
-#endif
 
 void z_vrfy_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
 {
