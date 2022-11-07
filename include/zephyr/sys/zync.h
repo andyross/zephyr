@@ -68,14 +68,15 @@ struct k_zync_cfg {
  * @see `k_zync()`
  */
 struct k_zync {
-	struct k_spinlock lock;
 	_wait_q_t waiters;
-	struct k_zync_cfg cfg;
 	IF_ENABLED(Z_ZYNC_OWNER, (struct k_thread *owner;))
-	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (uint32_t rec_count;))
 	IF_ENABLED(CONFIG_POLL, (sys_dlist_t poll_events;))
-	IF_ENABLED(CONFIG_POLL, (bool pollable;))
+	struct k_spinlock lock;
+	struct k_zync_cfg cfg;
+	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (uint32_t rec_count;))
 	IF_ENABLED(Z_ZYNC_INTERNAL_ATOM, (k_zync_atom_t atom;))
+	IF_ENABLED(CONFIG_ZYNC_PRIO_BOOST, (int8_t orig_prio;))
+	IF_ENABLED(CONFIG_POLL, (bool pollable;))
 };
 
 #define Z_ZYNC_MVCLAMP(v) ((v) == 0 ? K_ZYNC_ATOM_VAL_MAX \

@@ -17,7 +17,7 @@ static void prio_boost(struct k_zync *zync, int pri)
 	if (zync->cfg.prio_boost && zync->owner != NULL) {
 		struct k_thread *th = z_waitq_head(&zync->waiters);
 
-		pri = MIN(pri, zync->owner->base.zync_prio);
+		pri = MIN(pri, zync->orig_prio);
 		if (th != NULL) {
 			pri = MIN(pri, th->base.prio);
 		}
@@ -30,29 +30,28 @@ static void prio_boost_reset(struct k_zync *zync)
 {
 #ifdef CONFIG_ZYNC_PRIO_BOOST
 	if (zync->cfg.prio_boost) {
-		z_set_prio(_current, _current->base.zync_prio);
+		z_set_prio(_current, zync->orig_prio);
 	}
-#endif
-}
-
-static void new_owner(struct k_zync *zync)
-{
-#ifdef Z_ZYNC_OWNER
-# ifdef CONFIG_ZYNC_PRIO_BOOST
-	if (zync->cfg.prio_boost) {
-		if (zync->owner != NULL) {
-			z_set_prio(zync->owner, zync->owner->base.zync_prio);
-		}
-		_current->base.zync_prio = _current->base.prio;
-	}
-# endif
-	zync->owner = _current;
 #endif
 }
 
 static void set_owner(struct k_zync *zync, struct k_thread *val)
 {
 	IF_ENABLED(Z_ZYNC_OWNER, (zync->owner = val));
+}
+
+static void take_ownership(struct k_zync *zync)
+{
+#ifdef Z_ZYNC_OWNER
+# ifdef CONFIG_ZYNC_PRIO_BOOST
+	if (zync->cfg.prio_boost) {
+		if (zync->owner == NULL) {
+			zync->orig_prio = _current->base.prio;
+		}
+	}
+# endif
+	zync->owner = _current;
+#endif
 }
 
 static inline int32_t modclamp(struct k_zync *zync, int32_t mod)
@@ -182,12 +181,11 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 
 	must_pend = mod < 0 && mod != delta;
 
-	if (val1 > 0) {
-		set_owner(zync, NULL);
-	}
-
 	if (delta > 0) {
-		prio_boost_reset(zync);
+		if (val0 == 0) {
+			prio_boost_reset(zync);
+		}
+		set_owner(zync, NULL);
 	}
 
 	resched = handle_poll(zync, val0, val1);
@@ -217,6 +215,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 			prio_boost(zync, _current->base.prio);
 			pendret = z_pend_curr(&zync->lock, key, &zync->waiters, timeout);
 			key = k_spin_lock(&zync->lock);
+			prio_boost(zync, K_LOWEST_THREAD_PRIO);
 
 			mod -= delta;
 			K_ZYNC_ATOM_SET(mod_atom) {
@@ -228,7 +227,7 @@ static int32_t zync_locked(struct k_zync *zync, k_zync_atom_t *mod_atom,
 	}
 
 	if (delta < 0) {
-		new_owner(zync);
+		take_ownership(zync);
 	}
 
 	if (resched && zync->cfg.fair) {
