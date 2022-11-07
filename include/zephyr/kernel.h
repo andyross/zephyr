@@ -2723,7 +2723,7 @@ struct k_mutex {
 
 #define K_OBJ_MUTEX K_OBJ_ZYNC
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 #define Z_MUTEX_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(1, true, true, true, 1) }
 #endif
 
@@ -2850,7 +2850,7 @@ static inline int k_mutex_unlock(struct k_mutex *mutex)
 #ifdef CONFIG_ZYNC_VALIDATE
 	__ASSERT(Z_PAIR_ATOM(&mutex->zp)->val == 0, "mutex not locked");
 #endif
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_ALWAYS_KERNEL
 	/* Synthesize "soft failure" return codes.  Needed by current
 	 * tests, consider wrapping into ZYNC_VALIDATE.
 	 */
@@ -2872,7 +2872,7 @@ struct k_condvar {
 
 #define K_OBJ_CONDVAR K_OBJ_ZYNC
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 #define Z_CONDVAR_INITIALIZER(obj) { Z_ZYNCP_INITIALIZER(0, true, false, false, 0) }
 #endif
 
@@ -2998,7 +2998,7 @@ struct k_sem {
 
 #define K_OBJ_SEM K_OBJ_ZYNC
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 #define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
 	{ Z_ZYNCP_INITIALIZER(initial_count, true, false, false, count_limit) }
 #endif
@@ -3131,7 +3131,7 @@ static inline void k_sem_reset(struct k_sem *sem)
  */
 static inline unsigned int k_sem_count_get(struct k_sem *sem)
 {
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 	return z_zync_atom_val(Z_PAIR_ZYNC(&sem->zp));
 #else
 	return sem->zp.atom.val;

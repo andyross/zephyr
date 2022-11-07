@@ -33,9 +33,26 @@ typedef union {
 	};
 } k_zync_atom_t;
 
+/* True if zyncs must track their "owner" */
 #if defined(CONFIG_ZYNC_PRIO_BOOST) || defined(CONFIG_ZYNC_RECURSIVE) \
 	|| defined(CONFIG_ZYNC_VALIDATE)
 #define Z_ZYNC_OWNER 1
+#endif
+
+/* True if all zync calls must go through the full kernel call
+ * (i.e. the atomic shortcut can't be used)
+ */
+#if defined(CONFIG_ZYNC_RECURSIVE) || defined(CONFIG_ZYNC_MAX_VAL) \
+	|| defined(CONFIG_ZYNC_PRIO_BOOST) \
+	|| (defined(CONFIG_ZYNC_USERSPACE_COMPAT) && defined(CONFIG_USERSPACE))
+#define Z_ZYNC_ALWAYS_KERNEL 1
+#endif
+
+/* True if every k_zync struct includes its own atom (it's not in the
+ * zync_pair to make all the vrfy boilerplate simpler)
+ */
+#if defined(Z_ZYNC_ALWAYS_KERNEL) || !defined(CONFIG_USERSPACE)
+#define Z_ZYNC_INTERNAL_ATOM 1
 #endif
 
 struct k_zync_cfg {
@@ -58,7 +75,7 @@ struct k_zync {
 	IF_ENABLED(CONFIG_ZYNC_RECURSIVE, (uint32_t rec_count;))
 	IF_ENABLED(CONFIG_POLL, (sys_dlist_t poll_events;))
 	IF_ENABLED(CONFIG_POLL, (bool pollable;))
-	IF_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT, (k_zync_atom_t atom;))
+	IF_ENABLED(Z_ZYNC_INTERNAL_ATOM, (k_zync_atom_t atom;))
 };
 
 #define Z_ZYNC_MVCLAMP(v) ((v) == 0 ? K_ZYNC_ATOM_VAL_MAX \
@@ -270,7 +287,7 @@ __syscall int32_t k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
  * of higher level APIs like k_sem/k_mutex.
  */
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 
 struct z_zync_pair {
 	struct k_zync zync;
@@ -293,7 +310,7 @@ __syscall int32_t z_zync_unlock_ok(struct k_zync *zync);
 #define Z_ZYNCP_USER_DEFINE(name, part, initv, fair, rec, pboost, maxv) \
 	Z_ZYNCP_DEFINE(name, initv, fair, rec, pboost, maxv)		\
 
-#else /* !CONFIG_ZYNC_USERSPACE_COMPAT */
+#else /* !INTERNAL_ATOM */
 
 struct z_zync_pair {
 	struct k_zync *zync;
@@ -326,7 +343,7 @@ static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 {
 	int32_t ret = 0;
 
-	if (IS_ENABLED(CONFIG_ZYNC_USERSPACE_COMPAT)) {
+	if (IS_ENABLED(Z_ZYNC_ALWAYS_KERNEL)) {
 		ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
 	} else if (k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
 		return 0;

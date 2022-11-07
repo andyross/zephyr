@@ -364,7 +364,6 @@ config MAX_DYN_ZYNCS
 
 config ZYNC_PRIO_BOOST
 	bool "Enable Zync priority inheritance algorithm"
-	select ZYNC_USERSPACE_COMPAT
 	help
 	  When selected, k_zync() will be able to boost the priority
 	  of the "owner" of a Zync to the priority of any of its
@@ -375,7 +374,6 @@ config ZYNC_PRIO_BOOST
 
 config ZYNC_MAX_VAL
 	bool "Enable Zync maximum value clamping"
-	select ZYNC_USERSPACE_COMPAT
 	default y if NETWORKING
 	default y if CMSIS_RTOS_V1
 	default y if CMSIS_RTOS_V2
@@ -389,7 +387,6 @@ config ZYNC_MAX_VAL
 
 config ZYNC_RECURSIVE
 	bool "Enable recursive Zync locks"
-	select ZYNC_USERSPACE_COMPAT
 	default y if NETWORKING
 	default y if DISK_ACCESS
 	default y if GPIO

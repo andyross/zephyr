@@ -99,8 +99,33 @@ void z_impl_k_zync_init(struct k_zync *zync, k_zync_atom_t *atom,
 	z_object_init(zync);
 }
 
+#ifndef Z_ZYNC_INTERNAL_ATOM
+/* When zyncs and atoms are stored separately (this is the
+ * default/preferred mode) the kernel size k_zync gets "dynamically"
+ * allocated at initialization time (thus allowing zero-filled structs
+ * to be initialized).  That's done with the existing object allocator
+ * if it's configured, otherwise with a simple allocate-once pool.
+ */
+static struct k_zync *alloc_zync(void)
+{
+#ifdef CONFIG_DYNAMIC_OBJECTS
+	return k_object_alloc(K_OBJ_ZYNC);
+#else
+	if(num_pool_zyncs < ARRAY_SIZE(zync_pool)) {
+		return &zync_pool[num_pool_zyncs++];
+	}
+	return NULL;
+#endif
+}
+#endif
+
 void z_impl_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
 {
+#ifndef Z_ZYNC_INTERNAL_ATOM
+	if (!k_is_user_context() && zp->zync == NULL) {
+		zp->zync = alloc_zync();
+	}
+#endif
 	k_zync_init(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), cfg);
 }
 
@@ -238,7 +263,7 @@ void z_impl_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 	k_spin_unlock(&zync->lock, key);
 }
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_ALWAYS_KERNEL
 int32_t z_impl_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
 	return k_zync(zync, &zync->atom, false, mod, timeout);
@@ -312,7 +337,7 @@ void z_vrfy_k_zync_get_config(struct k_zync *zync, struct k_zync_cfg *cfg)
 
 static void chk_atom(struct k_zync *zync, k_zync_atom_t *atom)
 {
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 	if (atom == &zync->atom) {
 		return;
 	}
@@ -341,7 +366,7 @@ int32_t z_vrfy_k_zync(struct k_zync *zync, k_zync_atom_t *mod_atom,
 
 static void chk_pair(struct z_zync_pair *p)
 {
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 	Z_OOPS(Z_SYSCALL_OBJ(p, K_OBJ_ZYNC));
 #else
 	struct k_zync *zptr;
@@ -376,20 +401,15 @@ static uint32_t num_pool_zyncs;
 
 void z_vrfy_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
 {
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_INTERNAL_ATOM
 	z_vrfy_k_zync_init(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), cfg);
 #else
 	struct z_zync_pair kzp;
 
 	Z_OOPS(z_user_from_copy(&kzp, zp, sizeof(kzp)));
 	if (kzp.zync == NULL) {
-#ifdef CONFIG_DYNAMIC_OBJECTS
-		kzp.zync = k_object_alloc(K_OBJ_ZYNC);
-#else
-		if(num_pool_zyncs < ARRAY_SIZE(zync_pool)) {
-			kzp.zync = &zync_pool[num_pool_zyncs++];
-		}
-#endif
+		kzp.zync = alloc_zync();
+		Z_OOPS(kzp.zync == NULL);
 		k_object_access_grant(kzp.zync, _current);
 		Z_OOPS(z_user_to_copy(zp, &kzp, sizeof(kzp)));
 	}
@@ -400,7 +420,7 @@ void z_vrfy_z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg)
 }
 #include <syscalls/z_pzync_init_mrsh.c>
 
-#ifdef CONFIG_ZYNC_USERSPACE_COMPAT
+#ifdef Z_ZYNC_ALWAYS_KERNEL
 int32_t z_vrfy_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
         Z_OOPS(Z_SYSCALL_OBJ(zync, K_OBJ_ZYNC));
@@ -421,6 +441,6 @@ int32_t z_vrfy_z_zync_unlock_ok(struct k_zync *zync)
 	return z_impl_z_zync_unlock_ok(zync);
 }
 #include <syscalls/z_zync_unlock_ok_mrsh.c>
-#endif /* USERSPACE_COMPAT */
+#endif /* ALWAYS_KERNEL */
 
 #endif /* CONFIG_USERSPACE */
