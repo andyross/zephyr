@@ -268,7 +268,9 @@ int32_t z_impl_z_pzync(struct k_zync *zync, int32_t mod, k_timeout_t timeout)
 {
 	return k_zync(zync, &zync->atom, false, mod, timeout);
 }
+#endif
 
+#ifdef Z_ZYNC_INTERNAL_ATOM
 uint32_t z_impl_z_zync_atom_val(struct k_zync *zync)
 {
 	return zync->atom.val;
