@@ -3041,6 +3041,8 @@ struct k_sem {
 static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
 			     unsigned int limit)
 {
+	limit = limit > K_SEM_MAX_LIMIT ? K_SEM_MAX_LIMIT : limit;
+
 	struct k_zync_cfg cfg = {
 		.atom_init = initial_count,
 		.fair = true,
@@ -3076,7 +3078,11 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
  */
 static inline int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
-	int ret = z_pzyncmod(&sem->zp, -1, timeout);
+	int ret;
+
+	do {
+		ret = z_pzyncmod(&sem->zp, -1, timeout);
+	} while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
 
 	/* Infuriating historical API requirements in test suite */
 	if (ret == -EAGAIN && K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
