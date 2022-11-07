@@ -395,7 +395,7 @@ void z_vrfy_k_zync_reset(struct k_zync *zync, k_zync_atom_t *atom)
 }
 #include <syscalls/k_zync_reset_mrsh.c>
 
-#ifndef CONFIG_DYNAMIC_OBJECTS
+#if defined(Z_ZYNC_INTERNAL_ATOM) && !defined(CONFIG_DYNAMIC_OBJECTS)
 static struct k_zync zync_pool[CONFIG_MAX_DYN_ZYNCS];
 static uint32_t num_pool_zyncs;
 #endif
