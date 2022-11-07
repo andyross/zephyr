@@ -341,16 +341,27 @@ __syscall void z_pzync_init(struct z_zync_pair *zp, struct k_zync_cfg *cfg);
 static inline int32_t z_pzyncmod(struct z_zync_pair *zp, int32_t mod,
 				 k_timeout_t timeout)
 {
-	int32_t ret = 0;
+	int32_t ret;
 
-	if (IS_ENABLED(Z_ZYNC_ALWAYS_KERNEL)) {
-		ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
-	} else if (k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
-		return 0;
-	} else {
-		ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp), false, mod, timeout);
+	do {
+		if (IS_ENABLED(Z_ZYNC_ALWAYS_KERNEL)) {
+			ret = z_pzync(Z_PAIR_ZYNC(zp), mod, timeout);
+		} else if (k_zync_try_mod(Z_PAIR_ATOM(zp), mod)) {
+			return 0;
+		} else {
+			ret = k_zync(Z_PAIR_ZYNC(zp), Z_PAIR_ATOM(zp),
+				     false, mod, timeout);
+		}
+	} while(mod < 0 && K_TIMEOUT_EQ(timeout, Z_FOREVER) && ret == 0);
+
+	/* Infuriating historical API requirements in test suite */
+	if (ret == 0) {
+		ret = -EAGAIN;
 	}
-	return ret = ret < 0 ? ret : (ret == 0 ? -EAGAIN : 0);
+	if (ret == -EAGAIN && K_TIMEOUT_EQ(timeout, Z_TIMEOUT_NO_WAIT)) {
+		ret = -EBUSY;
+	}
+	return ret < 0 ? ret : 0;
 }
 
 /* Low level "wait on condition variable" utility.  Atomically: sets

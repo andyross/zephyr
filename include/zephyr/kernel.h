@@ -2820,12 +2820,7 @@ static inline int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 #if defined(CONFIG_ZYNC_PRIO_BOOST) && defined(CONFIG_ZYNC_VALIDATE)
 	__ASSERT_NO_MSG(Z_PAIR_ZYNC(&mutex->zp)->cfg.prio_boost);
 #endif
-	int ret;
-
-	do {
-		ret = z_pzyncmod(&mutex->zp, -1, timeout);
-	} while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
-	return ret;
+	return z_pzyncmod(&mutex->zp, -1, timeout);
 }
 
 /**
@@ -3078,17 +3073,7 @@ static inline int k_sem_init(struct k_sem *sem, unsigned int initial_count,
  */
 static inline int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
-	int ret;
-
-	do {
-		ret = z_pzyncmod(&sem->zp, -1, timeout);
-	} while (K_TIMEOUT_EQ(timeout, K_FOREVER) && ret != 0);
-
-	/* Infuriating historical API requirements in test suite */
-	if (ret == -EAGAIN && K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-		ret = -EBUSY;
-	}
-	return ret;
+	return z_pzyncmod(&sem->zp, -1, timeout);
 }
 
 /**
