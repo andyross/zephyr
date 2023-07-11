@@ -1,0 +1,80 @@
+=======================================================================
+MT8295 Audio DSP userspace loader and demonstrator
+==================================================
+
+This is a comparatively tiny python script that works to start and
+stop the audio DSP on a Mediatek MT8195 Chromebook, and to read and
+write the two shared memory blocks (system DRAM and DSP-local SRAM).
+
+Try, e.g.:
+
+# On the development host (requires a Zephyr SDK in $HOME)
+# =======================
+
+make
+scp img.bin mt8195-load.py $DUT:
+
+# On the ChromeOS Device
+# ======================
+
+# Halt the DSP, any running audio will now fail
+./mt8195-load.py stop
+
+# View DRAM as it exists from the now-halted firmware
+./mt8195-load.py dump dram | hexdump -C | head -24
+
+# Clobber it with zeros and see that it's modified
+dd if=/dev/zero bs=1M count=16 of=zeros.bin
+./mt8195-load.py load dram zeros.bin
+./mt8195-load.py dump dram | hexdump -C
+
+# Load the new code
+./mt8195-load.py load sram ./img.bin
+
+# Start it up and look again
+./mt8195-load.py start
+./mt8195-load.py dump dram | hexdump -C
+
+=======================================================================
+SOF/Zephyr shared memory alternate log stream
+=============================================
+
+SOF's logger tool is problematic sometimes.  It requires a custom
+kernel build.  You have to get the right LDC (dictionary) file matched
+to your firmware.  It uses a heavyweight backend that requries kernel
+IPC (and thus fails to survive panics and DSP issues).  It can't be
+used from source code that isn't already instrumented with a trace
+context (i.e. you can't just "stuff a printf in" to check something
+unless your driver is already trying to log stuff).
+
+Sometimes you just want a side channel, so I stole the super-minimal
+printf implemention I did for Zephyr's EFI loader and wired it to
+unused DRAM memory as a header-only implementation for SOF.  Drop the
+mtprintf.h header into src/include, and add one line to initialize the
+count (DRAM isn't zero-filled by the firmware loader!) at firmware
+entry (patch below), then use "mtprintf()" anywhere in the code you
+like.
+
+Read the logs from userspace with "mt8195-load.py log".  There's 1M of
+buffer before it runs out of space and things blow up.
+
+--- a/src/init/init.c
++++ b/src/init/init.c
+@@ -9,6 +9,7 @@
+  * initialisation functions.
+  */
+
++#include <mtprintf.h>
+ #include <sof/debug/panic.h>
+ #include <sof/drivers/interrupt.h>
+ #include <sof/init.h>
+@@ -232,6 +233,9 @@ static int primary_core_init(int argc, char *argv[], struct sof *sof)
+ #ifndef __ZEPHYR__
+ int main(int argc, char *argv[])
+ {
++       MTPRINTF_LEN = 0;
++       mtprintf("%s() @ %s:%d\n", __func__, __FILE__, __LINE__);
++
+        int err = 0;
+
+        trace_point(TRACE_BOOT_START);
