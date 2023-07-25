@@ -1,0 +1,213 @@
+
+MPU
+===
+
+This devices has an MPU, not the RPO feature used on Intel devices.
+Figure out how it implements the cacheattr stuff, since the HAL won't
+be available.
+
+Seems straightforward: 32 pairs registers controlled using
+{R,W}PTLB{0,1}.  Register 0 is a 4k-aligned bottom address for the
+segment (and also an enable bit).  Register 1 is a
+slightly-complicated format containing cache/protection bits.
+
+Looking at the config at runtime, this seems like the hardware default
+(EDIT: no, the hardware has the MPU disabled and all zeros at boot,
+this is from somewhere in the SOF startup):
+
+ MPU 21: tlb0 0x00000001 tlb1 0x06000
+ MPU 22: tlb0 0x0c000001 tlb1 0x06e00
+ MPU 23: tlb0 0x0f000001 tlb1 0x06000
+ MPU 24: tlb0 0x10000001 tlb1 0x06e00
+ MPU 25: tlb0 0x12000001 tlb1 0x06000
+ MPU 26: tlb0 0x40000001 tlb1 0xf7f00
+ MPU 27: tlb0 0x40040001 tlb1 0x06000
+ MPU 28: tlb0 0x60000001 tlb1 0xf7f00
+ MPU 29: tlb0 0x60800001 tlb1 0xf7e00
+ MPU 30: tlb0 0x61000001 tlb1 0x06e00
+ MPU 31: tlb0 0x61100001 tlb1 0x06000
+
+The permissions are the 9 bits above the low byte in tlb1. The
+known-used regions are one of 0x6000 (uncached rwx), 0xf7f0
+(writeback-cached rwx RAM) and 0x6e (uncached with no execute
+permission).
+
+Note that the second 8M of the DRAM space is mapped with a different
+("device"?) mapping (maybe for DMA use?).  And there's a working 1M
+uncached region after that, making up the "missing 1M" oddity in the
+devicetree mappings, though the memory type is oddly changed in the
+middle.
+
+BIG GOTCHA: the monotonicity requirements for the MPU apply even for
+disabled segments, so the active array of segments must be packed onto
+the END of the register array so that the early disabled ones can be
+left at zero, and then be WRITTEN BACKWARDS so active memory fetches
+during the process don't stumble over an incorrect configuration.
+(Presumably it also works to put 0xfffff000 in ones at the end too).
+
+I REPEAT: the rules about segment monotonicity must not be violated by
+a segment that matches an active memory fetch EVEN IF you are writing
+disabled segments!
+
+Memory Map
+==========
+
+Seems like the device is on the same system bus as the ARM application
+cores, at least addresses for its own registers are identical.  If so,
+then the 0x1xxxxxxx region of memory looks like it's the device
+register space.
+
+SRAM is 256k at 0x40000000.  No surprises that I can see.  The host
+gets its own MMIO mapping for this at 0x10840000.
+
+Somewhere between SRAM and DRAM are faulting addresses that can't be
+probed without hanging the DSP (not sure if this is a
+software-catchable exception or not yet)
+
+"DRAM" is weirder.  It's mapped at 0x60000000, which is the same
+address as the main OS sees for the same memory.  The device-tree
+mappings show 13.5M, then a 1M gap, then 2.5M more, for 17M total.
+Checking reading, the gap seems to be MOSTLY usable, but there is 128k
+at exactly 16M that reads as zeros but behaves as a noop on write.
+
+Access beyond 17M doesn't work, but fails silently up to at least
+0x7fffff00.  Access to the very last 256 bytes of the region starts
+faulting again.
+
+From SOF's perspective, shared memory starts 8M into the DRAM space
+and the following regions are:
+
+4k outbox
+4k inbox
+2k debug (the FW_STATUS field et. al)
+2k except
+4k stream
+4k trace
+
+Interrupts
+==========
+
+SOF shows the following interrupts registred:
+
+interrupt register irq 21 handler 0x60014e68 (== edf_scheduler_run())
+interrupt register irq 68 handler 0x600102a4 (== platform_timer_handler())
+interrupt register irq 57 handler 0x6000fdcc (== mbox0_handler())
+interrupt register irq 58 handler 0x6000fdf4 (== mbox1_handler())
+
+Looking at the driver (mt8195/interrupt.c) there seem to be two Xtensa
+architectural interrupts (1 and 23) wired to a tiny local interrupt
+controller, which has a separate flag word register for each to allow
+sharing the interrupts.  These are MTK_DSP_DSP_IRQ_STATUS (23) and
+MTK_DSP_RG_INT_STATUS0 (1).  The former is masked with 0x3ffffff0 to
+read the useful interrupt inputs, the latter with 0xffff.  There
+doesn't seem to be any controller-side clear.  You just ACK the
+interrupt at the device side, and do the Xtensa clear needed for the
+interrup type.
+
+Note that edf_scheduler_run() is a software (!) interrupt on the
+real/Xtensa interrupt number 21.  Zephyr won't care about this.  The
+other three are real interrupts.
+
+XtensaIRQ  StatusReg   Mask
+    1      0x10680150  0x3ffffff0
+   23      0x108030fc  0xffff
+
+IPC
+===
+
+For inbound interrupts; it looks like "mbox0" is for receiving inbound
+commands, and "mbox1" is for ACKs to earlier outbound commands.  The
+mailbox/dspbox shared memory conventions seem broadly identical to
+Intel's.
+
+Outbound commands get signaled by an ADSP_IPI_OP_REQ register.
+Likewise you can signal response to a received command on
+ADSP_IPI_OP_RSP.
+
+CLOCK/HZ
+========
+
+Seems like a simple clock driver, really.  A few different modes and
+some magic numbers.
+
+Note that there is handling in ipc.c:ipc_platform_complete_cmd to
+force a suspend when requested by the just-executed command (weird
+place, but whatever).
+
+TIMER
+======
+
+Looks like a pretty conventional 64 bit up counter.  There are four
+separate counters available.  Two separate registers for H and L
+(needs standard looped read).  A bit for IRQ "clear", one for IRQ
+enable, one for timer global enable.
+
+Clock source seems like it can be set to either 13 or 26 MHz, and it's
+not really clear which is used at runtime.  platform_timer_start()
+uses 13, but then platform_timer_set() interprets its "ticks" argument
+in the 13 Mhz units but resets the same clock to use 26?!  This might
+just be buggy -- SOF uses regular ticks I think, so maybe the "start
+at 13" is just an oops.
+
+Registers are really schizo though.  There are two register blocks:
+"platform timer" (MTK_DSP_TIMER_BASE @ 0x10800000) and "ostimer"
+(MTK_DSP_OSTIMER_BASE @ 0x1080d000).  The ostimer registers are
+clearly an array of separate timers.  The source code implies there
+are four of them, but the OSTIMER_* registers in use in the driver are
+clearly using what would be the NINTH...
+
+The layout is different:
+
+  ostimer:  { control, init_l, init_h, cur_l,   cur_h, "tval", irq_ack }
+  platform: { control,   "sr", "cv_l", "cv_h", "wacr", "racr" }
+
+And there's some aliasing, ostimer "init_l" is used as a 32 bit
+"rst_val" by the actual driver, presumably to mean the same thing.
+The naming makes me afraid, though, that this is a DOWN counter that
+needs to be racily recomputed in tickless operation.
+
+At a guess: the global platform timer is free running, and the array
+of ostimers represent individual "interrupt after N cycles" event
+sources.  There doesn't seem to be a comparator available, but as long
+as there is at least one counter running freely we can compute from
+that.
+
+Note that there seem to be separate clock sources for each timer.  The
+ostimer64 values appear to be 13 MHz, and the driver sets that rate on
+the platform timer CNTCR register at start.  But the 32 bit ostimers
+are per the driver source running at 26M instead!  It's not clear what
+the other options are, I also see a "32K" CLK_SRC (likely 32768 Hz?)
+and also BCLK (no idea) and PCLK (possibly the platform timer?).
+
+Only the ostimer32 seems to be wired for interrupts in the driver, so
+that's what we'll have to use.  There's a fairly conventional looking
+set of bits for IRQ_ENABLE, IRQ_STA(tus) and IRQ_CLEAR (write a 1 to
+clear).
+
+DMA
+===
+
+This is captured by the "memif" driver, which controls an "AFE"
+hardware device (Audio Front End -- front from the perspective of the
+firmware: it's the "back end" to the ALSA driver in the kernel!).
+
+But interestingly there are no interrupts associated with this?!
+Looks like it just polls, maybe out of the LL scheduler handling?
+
+Seems extremely thin, like the whole thing is mostly just software on
+top of the shared memory.
+
+I do note that there is a memif_interrupt() function implemented as
+the ".interrupt" handler on a struct dma_ops.  But... that seems like
+an API called out of the SOF scheduler
+(c.f. src/schedule/dma_single_chan_domain.c), as if to implement
+software control.  It's not called under a hardware ISR.
+
+Ah... in afe-drv.c there are interrupt control functions that are
+stubbed out (c.f. afe_irq_{get_status,clear,enable,disable}.  Looks
+like they just never got to this part.
+
+Basically the hardware allows for runtime inspection of the current
+pointer into a transferring buffer, start/stop of the stream, and
+that's about it.  In SOF, the buffer setup and choice lives above the
+driver level, but I'm not completely sure where.

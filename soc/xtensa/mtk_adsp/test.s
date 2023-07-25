@@ -8,7 +8,6 @@
 // Don't try to link C code into this rig, it won't work.
 
 .section .init
-_start:
 	j after_immediates
 
 .section .text
@@ -72,5 +71,5 @@ after_immediates:
 	s32i a5, a4, 4
 	s32i a5, a4, 8
 	s32i a5, a4, 12
-loop:
-	j loop
+
+	j _start

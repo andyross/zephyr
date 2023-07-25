@@ -7,8 +7,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include <xtensa/hal.h>
-
 /* (Cribbed from Zephyr: arch/x86/zefi/printf.h) */
 
 /* Tiny, but not-as-primitive-as-it-looks implementation of something
@@ -28,13 +26,16 @@
  * last four bytes.  It's a debug tool.  NOT RELIABLE FOR PRODUCTION
  * USE.
  */
-#define MTPRINTF_BUF ((char *)0x60700000)
-#define MTPRINTF_LEN (*(int*)0x607ffffc)
+#define MTPRINTF_BUF ((volatile char *)0x60700000)
+#define MTPRINTF_LEN (*(volatile int*)0x607ffffc)
 
 static inline void z_putchar(char c)
 {
-	MTPRINTF_BUF[MTPRINTF_LEN++] = c;
-	MTPRINTF_BUF[MTPRINTF_LEN] = 0;
+	volatile char *p = &MTPRINTF_BUF[MTPRINTF_LEN];
+	p[1] = 0;
+	p[0] = c;
+	MTPRINTF_LEN++;
+	__asm__ volatile("dhwb %0, 0; dhwb %0, 4" :: "r"(p));
 }
 
 struct _pfr {
@@ -43,7 +44,7 @@ struct _pfr {
 	int idx;
 };
 
-static void pc(struct _pfr *r, int c)
+static inline void pc(struct _pfr *r, int c)
 {
 	if (r->buf != NULL) {
 		if (r->idx <= r->len) {
@@ -55,7 +56,7 @@ static void pc(struct _pfr *r, int c)
 	r->idx++;
 }
 
-static void prdec(struct _pfr *r, long v)
+static inline void prdec(struct _pfr *r, long v)
 {
 	if (v < 0) {
 		pc(r, '-');
@@ -76,14 +77,14 @@ static void prdec(struct _pfr *r, long v)
 	}
 }
 
-static void endrec(struct _pfr *r)
+static inline void endrec(struct _pfr *r)
 {
 	if (r->buf && r->idx < r->len) {
 		r->buf[r->idx] = 0;
 	}
 }
 
-static int vpf(struct _pfr *r, const char *f, va_list ap)
+static inline int vpf(struct _pfr *r, const char *f, va_list ap)
 {
 	for (/**/; *f != '\0'; f++) {
 		bool islong = false;
@@ -184,6 +185,5 @@ static inline int mtprintf(const char *f, ...)
 	struct _pfr r = {0};
 
 	CALL_VPF(&r);
-	xthal_dcache_region_writeback(MTPRINTF_BUF, 0x10000);
 	return ret;
 }
