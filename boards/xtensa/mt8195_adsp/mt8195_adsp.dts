@@ -1,3 +1,5 @@
 /dts-v1/;
 / {
+    // FIXME: device.h doens't build unless there is at least one node
+    dummy { };
 };

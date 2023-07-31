@@ -5,4 +5,8 @@ if SOC_FAMILY_MTK_ADSP
 config SOC_FAMILY
 	default "mtk_adsp"
 
+# All Xtensa LXn cores are basically identical, this will do
+config SOC_TOOLCHAIN_NAME
+	default "intel_tgl_adsp"
+
 endif # SOC_FAMILY_MTK_ADSP
