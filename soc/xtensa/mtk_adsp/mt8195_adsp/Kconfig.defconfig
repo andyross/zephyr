@@ -1,0 +1,9 @@
+if SOC_SERIES_MT8195_ADSP
+
+config SOC
+	default "mt8195_adsp"
+
+config SOC_SERIES
+	default "mt8195_adsp"
+
+endif # SOC_SERIES_MT8195_ADSP
