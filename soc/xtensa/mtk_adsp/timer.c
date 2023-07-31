@@ -1,11 +1,19 @@
 #include "regs.h"
 #include "mtprintf.h"
 
-static inline unsigned int ccount(void)
+// Transplanted from ctest.c to defeat optimized inlining
+int rec_func(int arg)
 {
-    int t;
-    __asm__ volatile("rsr %0, CCOUNT" : "=r"(t));
-    return t;
+    extern int (*rec_fn_ptr)(int);
+    if (arg > 0) {
+        // (makes sure that local state gets retained across the call)
+        if (arg != rec_fn_ptr(arg - 1)) {
+            mtprintf("OOPS!\n");
+        }
+        return arg + 1;
+    }
+    mtprintf("bottom\n");
+    return arg + 1;
 }
 
 unsigned long long now(void)
@@ -30,7 +38,36 @@ void ostimer_bench(void)
         t = now();
         cc = ccount();
     } while(cc - cc0 < 10000000);
-    mtprintf("%d cpu cyc in %d ostimer64 cyc\n", cc - cc0, (int)(t - t0));
+    mtprintf("  %d cpu cyc in %d ostimer64 cyc\n", cc - cc0, (int)(t - t0));
+}
+
+void ptimer_bench(void)
+{
+    unsigned int cc, cc0, pt, pt0 = PTIMER.cv_l;
+
+    cc0 = ccount();
+    do {
+        pt = PTIMER.cv_l;
+        cc = ccount();
+    } while(cc - cc0 < 10000000);
+    mtprintf("  %d cpu cyc in %d platform timer cyc\n", cc - cc0, (int)(pt - pt0));
+}
+
+void ostimer1_bench(void)
+{
+    OSTIMER1.con &= ~1; // Disable
+    OSTIMER1.rst = 0xffffffff;
+    OSTIMER1.con |= 1;
+
+    unsigned int cc, cc0, pt, pt0 = OSTIMER1.cur;
+
+    cc0 = ccount();
+    do {
+        pt = OSTIMER1.cur;
+        cc = ccount();
+    } while(cc - cc0 < 10000000);
+    OSTIMER1.con &= ~1; // Disable
+    mtprintf("  %d cpu cyc in %d ostimer[n] timeout cyc\n", cc - cc0, (int)(pt0 - pt));
 }
 
 static inline unsigned int intsr(void)
@@ -46,6 +83,8 @@ static inline unsigned int intsr(void)
 void timer_test(void)
 {
     ostimer_bench();
+    ptimer_bench();
+    //ostimer1_bench();
 
     // The 32 bit ostimer's are down-counters with reset.  Low bit of
     // con is an enable flag, without which cur reports zero always,
@@ -105,9 +144,8 @@ void timer_test(void)
     } while(tb - tb0 < 1000000);
     mtprintf("%d ostimer64 cycles vs. %d ostimer0 cycles\n", tb-tb0, ta0-ta);
 
-
     // Now just watch it for a while to verify by hand that it works
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 3; i++) {
         mtprintf("OSTIMER0 con 0x%x cur %d rst %d irq 0x%x\n",
                  OSTIMER0.con, OSTIMER0.cur, OSTIMER0.rst, OSTIMER0.irq_ack);
         for(volatile int _l = 0; _l < 100000; _l++);
@@ -117,20 +155,46 @@ void timer_test(void)
     // another 64 bit up-counter.  It appears to use the same
     // underlying clock as ostimer, but the counter value is
     // separately tracked.
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 3; i++) {
         unsigned int pt = PTIMER.cv_l;
         unsigned int ot = OSTIMER64.cur_l;
         mtprintf("PTIMER.cv_l %d (diff %d vs. ostimer)\n", pt, (int)(pt - ot));
         for(volatile int _l = 0; _l < 100000; _l++);
     }
 
-    // Similar benchmark for ptimer rate (indeed identical to ostimer64)
-    unsigned int cc, cc0, pt, pt0 = PTIMER.cv_l;
+    // OSTIMER[1] is a safe playground for experimenting with clock sources
+    for(int i = 0; i < 4; i++) {
+        mtprintf("Benchmarking clock %d on ostimer1\n");
+        OSTIMER1.con &= ~1; // Disable
+        OSTIMER1.con = (OSTIMER1.con & ~OSTIMER_CON_CLKSRC_MASK) | (i << 4);
+        ostimer1_bench();
+        OSTIMER1.con &= ~1; // Disable
+    }
 
-    cc0 = ccount();
-    do {
-        pt = PTIMER.cv_l;
-        cc = ccount();
-    } while(cc - cc0 < 10000000);
-    mtprintf("%d cpu cyc in %d platform timer cyc\n", cc - cc0, (int)(pt - pt0));
+#if 0
+    // This needs more experimentation: the writes to clocksrc don't
+    // take, only a value of 1 ever reads back, which is what SOF
+    // uses.  Maybe only 26M works?
+    for(int i = 0; i < 4; i++) {
+        PTIMER.cr &= ~PTIMER_CR_ENABLE;
+        PTIMER.cr = (PTIMER.cr & ~PTIMER_CR_CLKSRC_MASK) | (i << 4);
+        PTIMER.cr |= PTIMER_CR_ENABLE;
+        mtprintf("Benchmarking clock %d PTIMER.cr = 0x%x\n", i, PTIMER.cr);
+        ostimer_bench();
+        ptimer_bench();
+    }
+#endif
+
+#if 0
+    // Do the same game with fields on ostimer64, which isn't
+    // documented to behave the same but might?  (No, it doesn't.  No
+    // effect, writes don't take)
+    for(int i = 0; i < 4; i++) {
+        OSTIMER64.con &= ~1; // Disable
+        OSTIMER64.con = (OSTIMER64.con & 0xffffff0f) | (i << 4);
+        OSTIMER64.con |= 1; // Disable
+        mtprintf("Benchmarking clock %d on ostimer64 (con 0x%x)\n", i, OSTIMER64.con);
+        ostimer_bench();
+    }
+#endif
 }

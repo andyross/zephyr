@@ -1,12 +1,24 @@
 #include "regs.h"
 #include "mtprintf.h"
 
+#ifndef __XCC__
+// Zephyr SDK generates memset() calls, but has no library for __builtin_memset?
+#include <string.h>
+void *memset(void *s, int c, size_t n)
+{
+    for (int i = 0; i < n; i++) ((char *)s)[i] = c;
+    return s;
+}
+#endif
+
 void timer_test(void);
+void set_cpu_freq(int idx);
+void ostimer_bench(void);
 
 __asm__(".align 4\n\t"
         ".global _start\n\t"
         "_start:\n\t"
-        "  movi  a0, 0x0002f\n\t" // was 4002f, but WOE=0 here for CALL0
+        "  movi  a0, 0x4002f\n\t" // 40000=WOE, 2=EXCM, F=INTLVL
         "  wsr   a0, PS\n\t"
         "  movi  a0, 0\n\t"
         "  wsr   a0, WINDOWBASE\n\t"
@@ -14,16 +26,12 @@ __asm__(".align 4\n\t"
         "  wsr   a0, WINDOWSTART\n\t"
         "  rsync\n\t"
         "  movi  a1, 0x40040000\n\t"
-        "  j c_main\n\t"); // was call4, but this is a CALL0 image
+        "  call4 c_main\n\t"); // call4 or j, depending on WOE
 
-void fa(void);
-void fb(void);
-void fc(void);
-void fd(void);
-void fe(void);
-
+// MPU TLB opcodes don't build wiht gcc, need a solution
 static void enable_mpu(void)
 {
+#ifdef __XCC__
     static const unsigned int mpu[][2] = {
         { 0x00000000, 0x06000 }, /* inaccessible null region */
         { 0x10000000, 0x06f00 }, /* all MMIO registers in this region (maybe) */
@@ -53,12 +61,12 @@ static void enable_mpu(void)
                          "wptlb %1, %0"
                          :: "r"(addren), "r"(segprot));
     }
+#endif
 }
 
 static void probe_mem(void)
 {
-    // Probe all the possible tlb pages to intuit ranges
-    // (note this takes a second or so and doesn't appear instantly)
+#ifdef __XCC__
     mtprintf("Probing memory map:\n");
     unsigned int addr, tlb, lasttlb = 0xffffffff;
     for(addr = 0; addr < 0xffff0000; addr += 4096) {
@@ -69,13 +77,7 @@ static void probe_mem(void)
         }
         lasttlb = tlb;
     }
-}
-
-static inline unsigned int ccount(void)
-{
-    int t;
-    __asm__ volatile("rsr %0, CCOUNT" : "=r"(t));
-    return t;
+#endif
 }
 
 static void memperf(unsigned int *addr)
@@ -123,13 +125,13 @@ static void memperf(unsigned int *addr)
     int n = 32 * reps;
     int cyc = t1 - t0;
 
-    // Kludgey fixed point.  Note edge case where it prints
-    // e.g. "1.2" instead of "1.02"!!! (No precision specifiers in our
+    // Kludgey fixed point.  Note edge case to keep it from printing
+    // e.g. "1.2" instead of "1.02" (No precision specifiers in our
     // printf)
     int ratex100 = (100 * cyc) / n;
     int rate_i = ratex100 / 100;
     int rate_f = ratex100 % 100;
-    mtprintf("  %d.%d cyc/read\n", rate_i, rate_f);
+    mtprintf("  %d.%s%d cyc/read\n", rate_i, (rate_f && rate_f < 10) ? "0" : "", rate_f);
 }
 
 // Look for holes in DRAM.  Thought I saw one earlier, but this shows
@@ -154,19 +156,25 @@ void dram_walk(void)
 }
 
 void mem_benchmark(void) {
-    // FIXME: this is showing artificially slow, as both the
-    // instruction fetches and DRAM fetches are uncached.  Would do
-    // better to turn on icache separately.
-    mtprintf("Benchmarking uncached SRAM\n");
+    // We're starting with caching enabled at the MPU level, but the
+    // caches themselves aren't active yet, that's happens via the
+    // MEMCTL SR.
+
+    mtprintf("Benchmarking uncached SRAM (incl. instruction fetches!)\n");
     memperf((void *)0x40000000);
 
-    // The MPU configuration enabled caching at the bus level, but
-    // didn't actually enable the cache hardware itself.  Turn it on
-    // via MEMCTL.
-    unsigned int memctl = 0xffffff00;
+    // Per my reading of the ISA spec, this enables icache but not dcache
+    unsigned int memctl = (0xffffffff << 18);
     __asm__ volatile("wsr %0, MEMCTL; rsync" :: "r"(memctl));
 
-    mtprintf("Benchmarking (cached?) SRAM\n");
+    mtprintf("Benchmarking SRAM with icache enabled\n");
+    memperf((void *)0x40000000);
+
+    // Now enable all caches
+    memctl = 0xffffff00;
+    __asm__ volatile("wsr %0, MEMCTL; rsync" :: "r"(memctl));
+
+    mtprintf("Benchmarking cached SRAM\n");
     memperf((void *)0x40000000);
     mtprintf("Benchmarking uncached DRAM\n");
     memperf((void *)0x60000000);
@@ -200,6 +208,62 @@ void irq_reset(void)
     mtprintf("INTERRUPT now 0x%x\n", intstat);
 }
 
+void mbox_test(void)
+{
+    // Write to the out message fields on all five mbox devices to be
+    // sure they read back the same data. (FWIW: touching the "sixth"
+    // one panics, so there are indeed five)
+    for (int i = 0; i < 5; i++) {
+        for(int j = 0; j < 5; j++) {
+            MTK_MBOX(i).out_msg[j] = (i << 8) | j;
+        }
+        mtprintf("mbox%d in msg: { 0x%x, 0x%x, 0x%x, 0x%x, 0x%x }\n", i,
+                 MTK_MBOX(i).in_msg[0], MTK_MBOX(i).in_msg[1], MTK_MBOX(i).in_msg[2],
+                 MTK_MBOX(i).in_msg[3], MTK_MBOX(i).in_msg[4]);
+        mtprintf("mbox%d out msg: { 0x%x, 0x%x, 0x%x, 0x%x, 0x%x }\n", i,
+                 MTK_MBOX(i).out_msg[0], MTK_MBOX(i).out_msg[1], MTK_MBOX(i).out_msg[2],
+                 MTK_MBOX(i).out_msg[3], MTK_MBOX(i).out_msg[4]);
+    }
+
+    // Signal the SOF host CPU interrupts for giggles.  The SOF driver
+    // synchronously produces errors for each.  Very interestingly,
+    // and counter to the SOF headers, there seem to be FIVE
+    // significant bits in the CMD register.  Writing an 0x10 triggers
+    // an interrupt, but 0x20 doesn't.
+    MTK_MBOX(0).out_cmd = 0x10;
+    MTK_MBOX(1).out_cmd = 0x8;
+
+    // Now signal our own interrupts to be sure they flag.  They do,
+    // though if you read carefully mbox0/1 tend to be polluted with
+    // incoming events from the host.
+    for (int i = 0; i < 5; i++) {
+        MTK_MBOX(i).in_cmd_clr = MTK_MBOX(i).in_cmd; // clear interrupt
+        mtprintf("mbox%d cmd 0x%x irq23 0x%x\n", i, MTK_MBOX(i).in_cmd, IRQ23_STATUS);
+        IRQ23_ENABLE |= (IRQ23_MBOX0_MASK << i);
+
+        MTK_MBOX(i).in_cmd = 0x10; // flag interrupt
+        mtprintf("mbox%d cmd 0x%x irq23 0x%x\n", i, MTK_MBOX(i).in_cmd, IRQ23_STATUS);
+        MTK_MBOX(i).in_cmd_clr = MTK_MBOX(i).in_cmd; // clear again
+    }
+}
+
+// Function defined in timer.c to defeat optimization
+int (*rec_fn_ptr)(int);
+int rec_func(int arg);
+
+void reg_win_test(void)
+{
+    // Deep recursion test
+    rec_fn_ptr = rec_func;
+    rec_fn_ptr(64);
+
+    // Validate that printf is working, varargs are a good exercise of
+    // stack management
+    mtprintf("%x\n", 0x1234567);
+    mtprintf("string: %s\n", "ok");
+    mtprintf("decimal: %d\n", 9);
+}
+
 void c_main(void)
 {
     // Clear DRAM (effects "MTPRINTF_LEN = 0;" too so logging works)
@@ -207,17 +271,32 @@ void c_main(void)
         if(i & 0x3) continue;
         *(int*)i = 0;
     }
-    mtprintf("Hello, world!\n");
+    mtprintf("Hello, world! [" _DATE "]\n");
 
-    // Clear SRAM.  Note that this clobbers our own stack, but it's
-    // just a quick hack and as I read the generated code is safe as
-    // long as no local variables have been set previously.
+    // Clear SRAM.  Leave 4k for our active stack
     extern char img_sram_end[];
     mtprintf("sram end @ %p\n", &img_sram_end);
-    for (int i = (int)&img_sram_end; i < 0x40040000; i+=4) {
-        if(i & 0x3) continue;
-        *(int*)i = 0;
+    for (int i = (int)&img_sram_end; i < 0x4003e000; i++) {
+        *(char*)i = 0;
     }
+
+    // Set up vector table
+    extern char z_xtensa_vecbase;
+    __asm__ volatile("wsr %0, VECBASE; rsync" :: "r"(&z_xtensa_vecbase));
+
+    // Enable exceptions
+    unsigned int ps = 0x4000f;
+    __asm__ volatile("wsr %0, PS; rsync" :: "r"(ps));
+
+    // Clock state is an external device, and frustratingly can't
+    // currently be read from the register state for lack of docs.
+    // Hardware power up is 26 MHz, but SOF leaves it at 720, and our
+    // test code might have mucked with something else.  Set a
+    // non-zero mode to effect a change (we just zeroed the "current"
+    // index!).  Mode 3 is 720 MHz
+    set_cpu_freq(3);
+
+    reg_win_test();
 
     enable_mpu();
 
@@ -231,19 +310,27 @@ void c_main(void)
 
     mem_benchmark();
 
-    // Validate that printf is working, also try some deep-ish
-    // recursion to make sure windows don't go wonky.
-    mtprintf("%x\n", 0x1234567);
-    mtprintf("string: %s\n", "ok");
-    mtprintf("decimal: %d\n", 9);
-    fa();
+    mbox_test();
 
+    // Enumerate and benchmark all the CPU speeds
+    for(int i = 0; i < 4; i++) {
+        mtprintf("setting cpu freq %d...\n", i);
+        set_cpu_freq(i);
+        ostimer_bench();
+    }
+
+#if 0
+    // Validate cycle time vs. realtime (720 MHz is indeed correct,
+    // though the output of the python script is jankier than I'd
+    // like...)
+    for(int i = 0; i < 20; i++) {
+        mtprintf("%d...\n", i);
+        delay(720000000);
+    }
+#endif
+
+    mtprintf("finis\n");
     while(1);
 }
 
-void fa(void) { mtprintf("%s\n", __func__); fb(); }
-void fb(void) { mtprintf("%s\n", __func__); fc(); }
-void fc(void) { mtprintf("%s\n", __func__); fd(); }
-void fd(void) { mtprintf("%s\n", __func__); fe(); }
-void fe(void) { mtprintf("%s\n", __func__);       }
 

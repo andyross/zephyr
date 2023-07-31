@@ -2,6 +2,7 @@
 import ctypes
 import sys
 import mmap
+import time
 
 # MT8195 audio firmware load/debug gadget
 
@@ -101,12 +102,19 @@ def main():
         # existing SOF firmware, before the heap.  Nothing uses this
         # currently.)
         msg = b''
+        dram = maps["dram"]
         for i in range(0x700000, 0x800000):
-            x = maps["dram"][i]
+            x = dram[i]
             if x == 0:
-                break
+                sys.stdout.buffer.write(msg)
+                sys.stdout.buffer.flush();
+                msg = b''
+                while x == 0:
+                    time.sleep(0.1)
+                    x = dram[i]
             msg += x.to_bytes(1, "little")
         sys.stdout.buffer.write(msg)
+        sys.stdout.buffer.flush();
 
     elif sys.argv[1] == "regs":
         # Register dump

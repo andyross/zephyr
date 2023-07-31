@@ -97,12 +97,11 @@ interrupt register irq 58 handler 0x6000fdf4 (== mbox1_handler())
 Looking at the driver (mt8195/interrupt.c) there seem to be two Xtensa
 architectural interrupts (1 and 23) wired to a tiny local interrupt
 controller, which has a separate flag word register for each to allow
-sharing the interrupts.  These are MTK_DSP_DSP_IRQ_STATUS (23) and
-MTK_DSP_RG_INT_STATUS0 (1).  The former is masked with 0x3ffffff0 to
-read the useful interrupt inputs, the latter with 0xffff.  There
-doesn't seem to be any controller-side clear.  You just ACK the
-interrupt at the device side, and do the Xtensa clear needed for the
-interrup type.
+sharing the interrupts.  These are MTK_DSP_DSP_IRQ_STATUS and
+MTK_DSP_RG_INT_STATUS0.  The former is masked with 0x3ffffff0 to read
+the useful interrupt inputs, the latter with 0xffff.  There doesn't
+seem to be any controller-side clear.  You just ACK the interrupt at
+the device side, and do the Xtensa clear needed for the interrup type.
 
 Note that edf_scheduler_run() is a software (!) interrupt on the
 real/Xtensa interrupt number 21.  Zephyr won't care about this.  The
@@ -115,14 +114,20 @@ XtensaIRQ  StatusReg   Mask
 IPC
 ===
 
-For inbound interrupts; it looks like "mbox0" is for receiving inbound
-commands, and "mbox1" is for ACKs to earlier outbound commands.  The
-mailbox/dspbox shared memory conventions seem broadly identical to
-Intel's.
+There's an array of four (? - found a comment that says four, linux
+defines two in devicetree and SOF uses three) {EDIT: no, five!  See
+comments in regs.h} "mbox" objects.  These have a CMD register and a
+CMD_CLR register, and five scratch registers for both the "in" and
+"out" direction.  The bottom four bits of CMD are significant, and an
+interrupt is latched any time any of them are non-zero.  They can be
+cleared by writing 1's to the CMD_CLR register.
 
-Outbound commands get signaled by an ADSP_IPI_OP_REQ register.
-Likewise you can signal response to a received command on
-ADSP_IPI_OP_RSP.
+The host side is a little confusing.  Devicetree has adsp_mailbox{0,1}
+devices at exactly the same addresses as the host uses.  It does
+indeed seem that it's the same device, so from the host perspective
+in/out are reversed: the ISR reads the "out" registers to get its
+input.  See drivers/mailbox/mtk-adsp-mailbox.c.  Linux doesn't even
+define offsets for the MSG fields.
 
 CLOCK/HZ
 ========
@@ -133,6 +138,12 @@ some magic numbers.
 Note that there is handling in ipc.c:ipc_platform_complete_cmd to
 force a suspend when requested by the just-executed command (weird
 place, but whatever).
+
+Playing with SOF builds, it turns out that the DSP starts up at
+hardware boot at 26Mhz.  So this driver is needed for sure.  Once
+initialized by SOF, though, it looks like it never down-clocks again?
+This is true even across device suspend cycles, where it actually
+looks like it stays alive?
 
 TIMER
 ======
@@ -211,3 +222,19 @@ Basically the hardware allows for runtime inspection of the current
 pointer into a transferring buffer, start/stop of the stream, and
 that's about it.  In SOF, the buffer setup and choice lives above the
 driver level, but I'm not completely sure where.
+
+OK, figuring this out: "AFE" is just a DMA engine, but it's
+comparatively specialized to audio.  Check
+src/platform/mt8195/afe-platform.c, there is an array of records for
+each channel, each of which has a bunch of pointers to registers,
+sometimes with shifts and field widths.  The up/downlink itself is a
+four-register block of base/cur/end/con0.  But there are fields in
+auxiliary registers for "fs" (sample rate, I think), "mono", "enable",
+"hd" (sample size), "agent_disable" (?), "ch_num", "msb" and "msb2"
+(extra bits because it lives on a 64 bit bus?  Irrelevant since the
+DSP is 32 bit).
+
+The source code for all this is in src/drivers/mediatek/afe/afe-drv.c.
+Might be simplest just to fork lift the whole driver framework, I hate
+to say.  DTSifying those giant tables of indirected registers is going
+to be a nightmare.

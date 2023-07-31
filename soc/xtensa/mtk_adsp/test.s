@@ -73,3 +73,35 @@ after_immediates:
 	s32i a5, a4, 12
 
 	j _start
+
+.section .UserExceptionVector.text
+.global _UserException
+_UserException:
+	movi a0, 6
+	slli a0, a0, 28
+	movi a2, 43
+	s32i a2, a0, 0
+	memw
+1:
+	j 1b
+	rfe
+
+.section .KernelExceptionVector.text
+.global _KernelException
+_KernelException:
+	movi a0, 6
+	slli a0, a0, 28
+	s32i a0, a0, 0
+1:
+	j 1b
+	rfe
+
+.section .DoubleExceptionVector.text
+.global _DoubleException
+_DoubleException:
+	movi a0, 6
+	slli a0, a0, 28
+	s32i a0, a0, 0
+1:
+	j 1b
+	rfe
