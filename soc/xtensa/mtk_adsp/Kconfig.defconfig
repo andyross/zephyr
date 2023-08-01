@@ -29,4 +29,13 @@ config ATOMIC_OPERATIONS_C
 config ATOMIC_OPERATIONS_ARCH
 	default n
 
+config GEN_ISR_TABLES
+	default y
+config GEN_SW_ISR_TABLE
+	default y
+config GEN_IRQ_VECTOR_TABLE
+	default n
+config DYNAMIC_INTERRUPTS
+	default y
+
 endif # SOC_FAMILY_MTK_ADSP
