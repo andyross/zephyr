@@ -20,7 +20,9 @@ SECTIONS {
 
   .iram : {
     *(.iram0.*)
-  }
+  } > sram
+
+  _mtk_adsp_sram_end = .;
 
   .text : {
     __text_region_start = .;
@@ -33,7 +35,7 @@ SECTIONS {
     __text_region_end = .;
   } > dram
 
-  .rodata : ALIGN(4096) {
+  .rodata : {
     __rodata_region_start = .;
     *(.rodata)
     *(.rodata.*)
@@ -51,6 +53,8 @@ SECTIONS {
 #include <zephyr/linker/common-rom.ld>
 
   __rodata_region_end = .;
+
+  /* Switching MPU permissions, align by 4k: */
   . = ALIGN(4096);
   _image_ram_start = .;
 
@@ -75,6 +79,11 @@ SECTIONS {
 #include <zephyr/linker/common-noinit.ld>
 #include <zephyr/linker/common-ram.ld>
 #include <snippets-sections.ld>
+
+  _mtk_adsp_dram_end = .;
+
+  /* Non-runtime-loaded sections below */
+
 #include <zephyr/linker/debug-sections.ld>
 
    /DISCARD/ : { *(.note.GNU-stack) }
