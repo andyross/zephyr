@@ -1,12 +1,13 @@
+#include <zephyr/devicetree.h>
 #include <string.h>
 
 extern char _mtk_adsp_sram_end[];
-#define SRAM_START 0x40000000
-#define SRAM_END   0x40040000
+#define SRAM_START DT_REG_ADDR(DT_NODELABEL(sram0))
+#define SRAM_END   DT_REG_SIZE(DT_NODELABEL(sram0))
 
 extern char _mtk_adsp_dram_end[];
-#define DRAM_START 0x60000000
-#define DRAM_END   0x61100000
+#define DRAM_START DT_REG_ADDR(DT_NODELABEL(dram0))
+#define DRAM_END   DT_REG_SIZE(DT_NODELABEL(dram0))
 
 /* This is the true boot vector.  This device allows for direct
  * setting of the alternate reset vector, so we let it link wherever
