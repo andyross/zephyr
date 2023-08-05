@@ -1,0 +1,13 @@
+description: MediaTek Audio DSP CPU Frequency Control
+compatible: "mtk,mt8195_cpuclk"
+properties:
+  freqs_mhz:
+    type: array
+    description: Available frequencies in ascending order
+    required: true
+  reg:
+    type: array
+  cg_reg:
+    type: int
+  pll_ctrl_reg:
+    type: int

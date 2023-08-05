@@ -1,0 +1,2 @@
+config BOARD_MT8195_ADSP
+	bool "Mediatek MT8195 Audio DSP"
