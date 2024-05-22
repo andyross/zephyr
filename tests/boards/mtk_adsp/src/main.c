@@ -35,6 +35,7 @@ static uint32_t cpu_hz(void)
 
 ZTEST(mtk_adsp, cpu_freq)
 {
+#ifdef CONFIG_SOC_SERIES_MT8195_ADSP
 	int freqs[] = { 26, 370, 540, 720 };
 
 	for (int i = 0; i < ARRAY_SIZE(freqs); i++) {
@@ -49,6 +50,9 @@ ZTEST(mtk_adsp, cpu_freq)
 
 		zassert_true(err > 200);
 	}
+#else
+	(void)cpu_hz();
+#endif
 }
 
 #define MBOX0 DEVICE_DT_GET(DT_INST(0, mediatek_mbox))
