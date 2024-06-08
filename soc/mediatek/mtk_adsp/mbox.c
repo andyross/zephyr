@@ -35,13 +35,23 @@
  * both sides).
  */
 
+// FIXME: add explanation for variant layout
 struct mtk_mbox {
+#ifdef SOC_SERIES_MT8195_ADSP
 	uint32_t in_cmd;
 	uint32_t in_cmd_clr;
 	uint32_t in_msg[5];
 	uint32_t out_cmd;
 	uint32_t out_cmd_clr;
 	uint32_t out_msg[5];
+#else
+	uint32_t in_cmd;
+	uint32_t out_cmd;
+	uint32_t in_cmd_clr;
+	uint32_t out_cmd_clr;
+	uint32_t in_msg[5];
+	uint32_t out_msg[5];
+#endif
 };
 
 struct mbox_cfg {

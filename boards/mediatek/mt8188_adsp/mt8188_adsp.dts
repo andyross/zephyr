@@ -45,7 +45,7 @@ soc {
 		reg = <0x10b80010 4>;
 		status-reg = <0x10b80050>;
 		interrupts = <2 0 0>;
-		mask = <0x3ffffff0>; // FIXME: unchanged for 818x?
+		mask = <0x1f>;
 		interrupt-parent = <&core_intc>;
 	};
 
@@ -61,14 +61,14 @@ soc {
 		interrupts = <18 0 0>;
 	};
 
-	mbox0: mbox@10b86000 {
+	mbox0: mbox@10b86100 {
 		compatible = "mediatek,mbox";
 		reg = <0x10b86000 56>;
 		interrupt-parent = <&intc2>;
 		interrupts = <0 0 0>;
 	};
 
-	mbox1: mbox@10b87000 {
+	mbox1: mbox@10b87100 {
 		compatible = "mediatek,mbox";
 		reg = <0x10b87000 56>;
 		interrupt-parent = <&intc2>;
