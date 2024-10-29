@@ -98,8 +98,10 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	iframe->pc = (uint32_t)z_thread_entry;
 #endif
 
-	/* force ARM mode by clearing LSB of address */
-	iframe->pc &= 0xfffffffe;
+	/* Set thumb bit in the PC.  Hardware doesn't care, but
+	 * software jumps to that address need it.
+	 */
+	iframe->pc |= 1;
 	iframe->a1 = (uint32_t)entry;
 	iframe->a2 = (uint32_t)p1;
 	iframe->a3 = (uint32_t)p2;
