@@ -43,6 +43,9 @@ config DCACHE_LINE_SIZE
 config NOCACHE_MEMORY
 	default y
 
+config LINKER_USE_STACK_SECTION
+	default y
+
 config MTK_ADSP_TIMER
 	default y
 config XTENSA_TIMER
