@@ -305,7 +305,7 @@ config LINKER_LAST_SECTION_ID
 
 config LINKER_USE_STACK_SECTION
 	bool "Place stacks in special section"
-	depends on !KERNEL_COHERENCE and !USERSPACE
+	depends on !KERNEL_COHERENCE && !USERSPACE
 	help
 	  When enabled, stack memory declared with either __stackmem
 	  or __kstackmem will be placed in a special ".stacks" section
