@@ -64,18 +64,17 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 #endif
 
 #ifdef CONFIG_FPU_SHARING
-		 // FIXME: clobbers switched_from which is in r5
-		 "   mrs r5, control;"   /* read CONTROL.FPCA */
-		 "   or r7, r5, ~4;"     /* cleared FPCA in r7 */
-		 "   tst r5, 4;"
-		 "   beq r5, 1f;"        /* check FPCA */
+		 "   mrs r8, control;"   /* read CONTROL.FPCA */
+		 "   or r7, r8, ~4;"     /* cleared FPCA in r7 */
+		 "   tst r8, 4;"
+		 "   beq r8, 1f;"        /* check FPCA */
 		 "   mrs r6, fpscr;"     /* save FPU state to stack */
 		 "   push {r6};"
 		 "   vstmdb sp, s0-s31;"
-		 "1: push {r5};"          /* outgoing have_fpu */
-		 "   ldmia r4, {r5};"     /* incoming have_fpu */
+		 "1: push {r8};"          /* outgoing have_fpu */
+		 "   ldmia r4, {r8};"     /* incoming have_fpu */
 		 "   cmp r4, #0;"
-		 "   beq r5, 2f;"
+		 "   beq r8, 2f;"
 		 "   vldmia r4 {s0-s31};" /* restore FPU state */
 		 "   ldmia r4, {r6};"
 		 "   msr FPSCR, r6;"
@@ -126,6 +125,7 @@ struct hw_frame_base {
 };
 
 /* The hardware frame when entry is taken with FPU active */
+// FIXME: should gate this on CONFIG_CPU_HAS_FPU
 struct hw_frame_fpu {
 	struct hw_frame_base base;
 	uint32_t s_regs[16];
@@ -198,20 +198,18 @@ struct z_frame_fpu {
  */
 #define PAD(T) char pad_##T[FRAMESZ - sizeof(struct T)]
 union frame {
-	struct { PAD(hw_frame_base);      struct hw_frame_base hw;    };
-	struct { PAD(hw_frame_fpu);       struct hw_frame_fpu hwfp;   };
-	struct { PAD(hw_frame_align);     struct hw_frame_align hw_a; };
+	struct { PAD(hw_frame_base);      struct hw_frame_base hw;          };
+	struct { PAD(hw_frame_fpu);       struct hw_frame_fpu hwfp;         };
+	struct { PAD(hw_frame_align);     struct hw_frame_align hw_a;       };
 	struct { PAD(hw_frame_align_fpu); struct hw_frame_align_fpu hwfp_a; };
-	struct { PAD(z_frame);            struct z_frame z;           };
+	struct { PAD(z_frame);            struct z_frame z;                 };
 #ifdef CONFIG_FPU_SHARING
-	struct { PAD(z_frame_fpu);        struct z_frame_fpu zfp;     };
+	struct { PAD(z_frame_fpu);        struct z_frame_fpu zfp;           };
 #endif
 };
 
-/* Validate the struct alignment */
-// FIXME: make this work
-#if 0
-#define FRAME_FIELD_END(F) ((void *) ((void *)&((((union frame *)0)->F)[1]))
+/* Validate the structs are correctly top-aligned */
+#define FRAME_FIELD_END(F) ((void *)&(&(((union frame *)0)->F))[1])
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hw_a));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp_a));
@@ -219,9 +217,16 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(z));
 #ifdef CONFIG_FPU_SHARING
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 #endif
-#endif//0
+
+/* Pointers to the frame locations for the callee-saved registers, set
+ * in arm_m_must_switch() and used by the fixup assembly in
+ * arm_m_exc_exit.
+ */
+static uint32_t *cs_outgoing;
+static uint32_t *cs_incoming;
 
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
+// FIXME: needs to store psplim!
 #define HW_TO_SWITCH(hw, sw) do {				\
 	struct switch_frame swtmp = {				\
 		.r0 = hw.r0, .r1 = hw.r1, .r2 = hw.r2,		\
@@ -260,7 +265,7 @@ static bool arm_m_is_thread_return(uint32_t lr)
  */
 static bool arm_m_fpu_state_pushed(uint32_t lr)
 {
-	return IS_ENABLED(CONFIG_FPU_SHARING) ? !!(lr & 0x08000000) : false;
+	return IS_ENABLED(CONFIG_CPU_HAS_FPU) ? !!(lr & 0x08000000) : false;
 }
 
 static void arm_m_switch_to_cpu(void *sp)
@@ -281,6 +286,12 @@ static void arm_m_switch_to_cpu(void *sp)
 	f = CONTAINER_OF(sp, union frame, z.u.sw);
 	SWITCH_TO_SYNTH(f->z.u.sw, f->z.u.hw);
 #endif
+
+	/* Mark the callee-saved pointer for the fixup assembly.  Note
+         * funny layout that puts r7 first!
+         */
+        cs_incoming = &f->z.u.hw.r7;
+
 }
 
 static void *arm_m_cpu_to_switch(void *sp, bool fpu)
@@ -334,6 +345,10 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 		return &f->z.have_fpu;
 	}
 #endif
+
+        /* Mark the callee-saved pointer for the fixup assembly */
+        cs_outgoing = &f->z.u.sw.r4;
+
 	return &f->z.u.sw;
 }
 
@@ -400,11 +415,10 @@ bool arm_m_must_switch(uint32_t lr)
  * and then return via BX to a constructed exception return value.  We
  * can use any of r0-r3/r12/lr because they have already been saved.
  */
-// FIXME: need to have set exc_ret
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =cs_outgoing;"
 	"  ldr r1, =cs_incoming;"
-	"  ldr lr, =exc_ret;"
+	"  ldr lr, #0xf000000f;" /* EXC_RETURN */
 	"  stm r0, {r4-r11};"
 	"  ldmia r1, {r7-r11};"
 	"  ldm r1, {r4-r6};"
