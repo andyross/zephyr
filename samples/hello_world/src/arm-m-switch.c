@@ -326,7 +326,7 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 
 #ifdef CONFIG_FPU_SHARING
 	if (fpu) {
-		f->fpscr = fpscr;
+		f->zfp.fpscr = fpscr;
 		f->zfp.have_fpu = true;
 		return &f->zfp.have_fpu;
 	} else {
