@@ -2,6 +2,8 @@
 #include <zephyr/kernel/thread.h>
 //#include <ksched.h> //DEBUG
 
+// Testing: mps3/corstone300/an547 is a qemu platform with both FPU and PSPLIM
+
 void *z_get_next_switch_handle(void *interrupted);//DEBUG, from ksched.h
 
 
@@ -48,7 +50,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		  */
 		 "mov r6, r12;"
 		 "mov r7, lr;"
-		 "ldr r8, =z_switch_end;" /* address of restore PC */
+		 "ldr r8, =3f;"           /* address of restore PC */
 		 "add r8, r8, #1;"        /* set thumb bit */
 		 "push {r6-r8};"
 		 "sub sp, sp, #32;"       /* skip over space for r5-r11 */
@@ -107,8 +109,9 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "pop {r0-r12, lr};"
 		 "pop {pc};"
 
-		 "z_switch_end:"
-		 :: "r"(r4), "r"(r5) : "r4-r11");
+		 "3:"
+		 :: "r"(r4), "r"(r5) :
+		  "r6", "r7", "r8", "r9", "r10", "r11");
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -125,7 +128,6 @@ struct hw_frame_base {
 };
 
 /* The hardware frame when entry is taken with FPU active */
-// FIXME: should gate this on CONFIG_CPU_HAS_FPU
 struct hw_frame_fpu {
 	struct hw_frame_base base;
 	uint32_t s_regs[16];
@@ -178,17 +180,14 @@ struct z_frame {
 	union u_frame u;
 };
 
-#ifdef CONFIG_FPU_SHARING
 struct z_frame_fpu {
 	uint32_t have_fpu;
 	uint32_t s_regs[32];
 	uint32_t fpscr;
 	union u_frame u;
 };
+
 #define FRAMESZ (4 + MAX(sizeof(struct z_frame_fpu), sizeof(struct hw_frame_align_fpu)))
-#else
-#define FRAMESZ (4 + MAX(sizeof(struct z_frame), sizeof(struct hw_frame_align_fpu)))
-#endif
 
 /* Union of all possible stack frame formats, aligned at the top (!).
  * Note that FRAMESZ is constructed to be larger than any of them to
@@ -203,9 +202,7 @@ union frame {
 	struct { PAD(hw_frame_align);     struct hw_frame_align hw_a;       };
 	struct { PAD(hw_frame_align_fpu); struct hw_frame_align_fpu hwfp_a; };
 	struct { PAD(z_frame);            struct z_frame z;                 };
-#ifdef CONFIG_FPU_SHARING
 	struct { PAD(z_frame_fpu);        struct z_frame_fpu zfp;           };
-#endif
 };
 
 /* Validate the structs are correctly top-aligned */
@@ -220,13 +217,14 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 
 /* Pointers to the frame locations for the callee-saved registers, set
  * in arm_m_must_switch() and used by the fixup assembly in
- * arm_m_exc_exit.
+ * arm_m_exc_exit.  Also a constant EXC_RETURN as thumb can't have
+ * immediates that big.
  */
 static uint32_t *cs_outgoing;
 static uint32_t *cs_incoming;
+static const uint32_t exc_ret = 0xf000000f;
 
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
-// FIXME: needs to store psplim!
 #define HW_TO_SWITCH(hw, sw) do {				\
 	struct switch_frame swtmp = {				\
 		.r0 = hw.r0, .r1 = hw.r1, .r2 = hw.r2,		\
@@ -317,10 +315,9 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	bool padded = (base->apsr & 0x200);
 	uint32_t fpscr;
 
-	/* FIXME: really, we should be checking stack bounds here when
-	 * PSPLIM is enabled, as that's what the user code expects,
-	 * even though "technically" PSPLIM only guards against user
-	 * code stack overflow and not interrupt entry
+	/* NOTE: the converted switch frame can be bigger than the
+	 * input hardware frame.  We should be checking stack bounds
+	 * here when PSPLIM is enabled.
 	 */
 
 	if (IS_ENABLED(CONFIG_FPU_SHARING) && fpu) {
@@ -352,8 +349,13 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 		HW_TO_SWITCH(f->hwfp_a.base.base, f->z.u.sw);
 	}
 
+#ifdef CONFIG_BUILTIN_STACK_GUARD
+	__asm__ volatile("mrs %0, psplim" : "=r"(f->z.u.sw.psplim));
+#endif
+
 #ifdef CONFIG_FPU_SHARING
 	if (fpu) {
+		__asm__ volatile("vstm %0, {s16-s31}" :: "r"(&f->zfp.s_regs[16]));
 		f->zfp.fpscr = fpscr;
 		f->zfp.have_fpu = true;
 		return &f->zfp.have_fpu;
@@ -410,15 +412,13 @@ bool arm_m_must_switch(uint32_t lr)
 
 	__asm__ volatile("mrs %0, psp" : "=r"(last));
 
-	// FIXME: must save s16-s31 here if fpu pushed!  Do it before
-	// switch_to_cpu()!
+	bool fpu = arm_m_fpu_state_pushed(lr);
 
 	/* Rejigger the frame we're pickling, and unpickle the new
 	 * thread we're returning into
 	 */
-	last = arm_m_cpu_to_switch(last, arm_m_fpu_state_pushed(lr));
+	last = arm_m_cpu_to_switch(last, fpu);
 	arm_m_switch_to_cpu(next);
-
 
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;
@@ -433,11 +433,13 @@ bool arm_m_must_switch(uint32_t lr)
  * registers), restore the same registers from the incoming thread,
  * and then return via BX to a constructed exception return value.  We
  * can use any of r0-r3/r12/lr because they have already been saved.
+ * FPU restore is handled in software, so we always use a constant
+ * EXC_RETURN value indicating an integer-only restore.
  */
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =cs_outgoing;"
 	"  ldr r1, =cs_incoming;"
-	"  ldr lr, #0xf000000f;" /* EXC_RETURN */
+	"  ldr lr, =exc_ret;" /* 0xf000000f, but can't encode that as immeidate */
 	"  stm r0, {r4-r11};"
 	"  ldmia r1, {r7-r11};"
 	"  ldm r1, {r4-r6};"
