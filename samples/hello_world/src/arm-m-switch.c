@@ -75,7 +75,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "   ldmia r4, {r8};"     /* incoming have_fpu */
 		 "   cmp r4, #0;"
 		 "   beq r8, 2f;"
-		 "   vldmia r4 {s0-s31};" /* restore FPU state */
+		 "   vldmia r4, {s0-s31};" /* restore FPU state */
 		 "   ldmia r4, {r6};"
 		 "   msr FPSCR, r6;"
 		 "   or r7, r7, 4;"       /* set FPCA */
@@ -268,6 +268,10 @@ static bool arm_m_fpu_state_pushed(uint32_t lr)
 	return IS_ENABLED(CONFIG_CPU_HAS_FPU) ? !!(lr & 0x08000000) : false;
 }
 
+/* Converts, in place, a pickled "switch" frame from a suspended
+ * thread to a "synthesized" format that can be restored by the CPU
+ * hardware on exception exit.
+ */
 static void arm_m_switch_to_cpu(void *sp)
 {
 	union frame *f;
@@ -277,10 +281,11 @@ static void arm_m_switch_to_cpu(void *sp)
 
 	if (have_fpu) {
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
-		SWITCH_TO_SYNTH(f->z.u.sw, f->zfp.u.hw);
+		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
+		__asm__ volatile("vldm %0, {r0-s31}" :: "r"(&f->zfp.s_regs[0]));
 	} else {
 		f = CONTAINER_OF(sp, union frame, z.have_fpu);
-		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
+		SWITCH_TO_SYNTH(f->z.u.sw, f->zfp.u.hw);
 	}
 #else
 	f = CONTAINER_OF(sp, union frame, z.u.sw);
@@ -294,6 +299,17 @@ static void arm_m_switch_to_cpu(void *sp)
 
 }
 
+static void fpu_cs_copy(struct hw_frame_fpu *src, struct z_frame_fpu *dst)
+{
+	for (int i = 0; IS_ENABLED(CONFIG_FPU_SHARING) && i < 16; i++) {
+		dst->s_regs[i] = src->s_regs[i];
+	}
+}
+
+/* Converts, in-place, a CPU-spilled ("hardware") exception entry
+ * frame to our ("zephyr") switch handle format such that the thread
+ * can be suspended
+ */
 static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 {
 	union frame *f;
@@ -301,12 +317,12 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	bool padded = (base->apsr & 0x200);
 	uint32_t fpscr;
 
-	// FIXME: need to check stack bounds here, the switch frame is
-	// bigger.
-
-	/* Don't need to copy the hardware-pushed FPU registers as the
-	 * locations don't get populated, but do need to grab FPSCR
+	/* FIXME: really, we should be checking stack bounds here when
+	 * PSPLIM is enabled, as that's what the user code expects,
+	 * even though "technically" PSPLIM only guards against user
+	 * code stack overflow and not interrupt entry
 	 */
+
 	if (IS_ENABLED(CONFIG_FPU_SHARING) && fpu) {
 		fpscr = CONTAINER_OF(sp, struct hw_frame_fpu, base)->fpscr;
 	}
@@ -316,11 +332,10 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	 * runtime.  These expansions let the compiler generate
 	 * optimized in-place copies for each.  In practice it does a
 	 * pretty good job, much better than a double-copy via an
-	 * intermediate buffer.
+	 * intermediate buffer.  Note that when FPU state is spilled
+	 * we must copy the 16 spilled registers first, to make room
+	 * for the copy.
 	 */
-	// FIXME: FPCCR.LSPEN is (!) enabled in Zephyr when
-	// FPU_SHARING=y, so the Sn registers are (!!) populated and
-	// need to be moved.
 	if (!fpu && !padded) {
 		f = CONTAINER_OF(sp, union frame, hw.r0);
 		HW_TO_SWITCH(f->hw, f->z.u.sw);
@@ -329,9 +344,11 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 		HW_TO_SWITCH(f->hw_a.base, f->z.u.sw);
 	} else if (fpu && !padded) {
 		f = CONTAINER_OF(sp, union frame, hwfp.base.r0);
+		fpu_cs_copy(&f->hwfp, &f->zfp);
 		HW_TO_SWITCH(f->hwfp.base, f->z.u.sw);
 	} else if (fpu && padded) {
 		f = CONTAINER_OF(sp, union frame, hwfp_a.base.base.r0);
+		fpu_cs_copy(&f->hwfp_a.base, &f->zfp);
 		HW_TO_SWITCH(f->hwfp_a.base.base, f->z.u.sw);
 	}
 
@@ -381,7 +398,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 
 bool arm_m_must_switch(uint32_t lr)
 {
-	if (arm_m_is_thread_return(lr)) {
+	if (!arm_m_is_thread_return(lr)) {
 		return false;
 	}
 
@@ -391,15 +408,17 @@ bool arm_m_must_switch(uint32_t lr)
 		return false;
 	}
 
-	// FIXME: must swap the FPU registers here!
-
 	__asm__ volatile("mrs %0, psp" : "=r"(last));
+
+	// FIXME: must save s16-s31 here if fpu pushed!  Do it before
+	// switch_to_cpu()!
 
 	/* Rejigger the frame we're pickling, and unpickle the new
 	 * thread we're returning into
 	 */
 	last = arm_m_cpu_to_switch(last, arm_m_fpu_state_pushed(lr));
 	arm_m_switch_to_cpu(next);
+
 
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;
