@@ -4,6 +4,13 @@
 
 // Testing: mps3/corstone300/an547 is a qemu platform with both FPU and PSPLIM
 
+// TODO:
+//
+// + Nested interrupts work by default (because only returns onto the
+//   PSP stack get special handling).  But nothing implements a "nested"
+//   count anywhere, and IIRC there are spots outside the arch layer
+//   that need that?  Figure this out.
+
 void *z_get_next_switch_handle(void *interrupted);//DEBUG, from ksched.h
 
 
@@ -27,7 +34,7 @@ static ALWAYS_INLINE void arm_m_exc_tail(void)
 
 	__asm__ volatile("mov %0, lr" : "=r"(lr));
 	if (arm_m_must_switch(lr)) {
-		__asm__ volatile("mov lr, =arm_m_exc_exit");
+		__asm__ volatile("ldr lr, =arm_m_exc_exit");
 	}
 }
 
@@ -217,12 +224,10 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 
 /* Pointers to the frame locations for the callee-saved registers, set
  * in arm_m_must_switch() and used by the fixup assembly in
- * arm_m_exc_exit.  Also a constant EXC_RETURN as thumb can't have
- * immediates that big.
+ * arm_m_exc_exit.
  */
-static uint32_t *cs_outgoing;
-static uint32_t *cs_incoming;
-static const uint32_t exc_ret = 0xf000000f;
+uint32_t *arm_m_cs_outgoing;
+uint32_t *arm_m_cs_incoming;
 
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
 #define HW_TO_SWITCH(hw, sw) do {				\
@@ -437,9 +442,9 @@ bool arm_m_must_switch(uint32_t lr)
  * EXC_RETURN value indicating an integer-only restore.
  */
 __asm__("arm_m_exc_exit:;"
-	"  ldr r0, =cs_outgoing;"
-	"  ldr r1, =cs_incoming;"
-	"  ldr lr, =exc_ret;" /* 0xf000000f, but can't encode that as immeidate */
+	"  ldr r0, =arm_m_cs_outgoing;"
+	"  ldr r1, =arm_m_cs_incoming;"
+	"  ldr lr, =#0xf000000f;"
 	"  stm r0, {r4-r11};"
 	"  ldmia r1, {r7-r11};"
 	"  ldm r1, {r4-r6};"
