@@ -91,7 +91,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		  * the stack is valid.
 		  */
 		 "str sp, [r5];"
-		 "mov r4, sp;"
+		 "mov sp, r4;"
 		 "msr basepri, r0;"
 
 		 /* Restore is super simple: pop the flags (and stack limit if
