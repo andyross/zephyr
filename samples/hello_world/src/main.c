@@ -28,6 +28,9 @@ void *main_sh, *my_sh;
  */
 void *next_sh;
 
+int sum;
+float fsum;
+
 void my_fn(void *a, void *b, void *c)
 {
 	printk("%s:%d\n", __func__, __LINE__);
@@ -35,6 +38,8 @@ void my_fn(void *a, void *b, void *c)
 	__ASSERT_NO_MSG((int)a == 0);
 	__ASSERT_NO_MSG((int)b == 1);
 	__ASSERT_NO_MSG((int)c == 2);
+
+	fsum += 0.5f;
 
 	arm_m_switch(main_sh, &my_sh);
 }
@@ -81,6 +86,9 @@ int main(void)
 
 	register float F = 6.0f;
 
+	fsum += F;
+	sum += A + B + C + D + E;
+
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
 	printk("Invoking SVC\n");
 	__asm__ volatile("svc 0");
@@ -107,6 +115,9 @@ int main(void)
 	__ASSERT_NO_MSG(F == 6);
 
 	/* Do it again, except via interrupt this time */
+
+	fsum -= F;
+	sum -= A + B + C + D + E;
 
 	printk("DONE!\n");
 	return 0;
