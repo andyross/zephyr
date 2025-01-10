@@ -41,7 +41,22 @@ void my_fn(void *a, void *b, void *c)
 
 	fsum += 0.5f;
 
-	arm_m_switch(main_sh, &my_sh);
+	register int A = 11;
+	register int B = 12;
+	register int C = 13;
+	register int D = 14;
+	register int E = 15;
+
+	while (true) {
+		printk("%s:%d\n", __func__, __LINE__);
+		arm_m_switch(main_sh, &my_sh);
+
+		__ASSERT_NO_MSG(A == 11);
+		__ASSERT_NO_MSG(B == 12);
+		__ASSERT_NO_MSG(C == 13);
+		__ASSERT_NO_MSG(D == 14);
+		__ASSERT_NO_MSG(E == 15);
+	}
 }
 
 void my_svc(void)
@@ -115,6 +130,10 @@ int main(void)
 	__ASSERT_NO_MSG(F == 6);
 
 	/* Do it again, except via interrupt this time */
+	printk("Switch via interrupt...\n");
+	next_sh = main_sh;
+	__asm__ volatile("svc 0");
+	printk("back\n");
 
 	fsum -= F;
 	sum -= A + B + C + D + E;

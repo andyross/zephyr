@@ -14,23 +14,56 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 
 bool arm_m_must_switch(uint32_t lr);
 
+void arm_m_exc_exit(void);
+
+K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
+
 static ALWAYS_INLINE void arm_m_exc_tail(void)
 {
-	/* This is sort of a dirty trick: we clobber the LR register
-	 * deliberately so our caller (note carefully ALWAYS_INLINE!)
-	 * "returns" into our fixup assembly and not into a hardware
-	 * restore.  Strictly this isn't legal: LR is a general
-	 * purpose register owned by the compiler and we don't know
-	 * that it hasn't generated code to mutate/restore/reuse it
-	 * before return.  In practice it doesn't because that would
-	 * break the debugger ABI.  But it remains a dirty trick.
+	/* Dirty trickery: we load this ISR's LR register (which
+	 * contains our interrupt return token) from the runtime stack
+	 * frame pushed to the top of the interrupt stack on entry.
+	 * Check it to see if we can/should return to a different
+	 * thread (which will then have magically pickled our
+	 * interrupted stackc into "switch" format), and then if so:
+	 * CLOBBER it with the address of our fixup code so that we
+	 * can finish saving the interrupted r4-r11 registers before
+	 * returning from the interrupt.
+	 *
+	 * Obviously this only works if the ISR is "ABI-compliant
+	 * enough".  It doesn't have to have pushed a complete frame,
+	 * but it does have to have put LR into its standard location.
+	 * In practice generated code does (because it has to store LR
+	 * somewhere so it can call other functions and then pop it to
+	 * return), so this works even on code built with
+	 * -fomit-frame-pointer.  If an app needs a direct interrupt
+	 * and can't meet these requirents, it can always skip this
+	 * call and return directly (reschedule is optional for direct
+	 * interrupts anyway).
 	 */
-	uint32_t lr;
+	uint32_t *stack_top = K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
+		K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]);
+	uint32_t *lr = &stack_top[-1];
+	uint32_t hook = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
 
-	__asm__ volatile("mov %0, lr" : "=r"(lr));
-	if (arm_m_must_switch(lr)) {
-		__asm__ volatile("ldr lr, =arm_m_exc_exit");
+	if (arm_m_must_switch(*lr)) {
+		printk("ANDY lr @ %p\n", lr);
+		*lr = hook;
 	}
+
+#if 0
+	// FIXME: it would probably be more robust, since this only
+	// ever happens for the outermost/lowest-priority interrupt,
+	// to write directly to the top of the interrupt stack instead
+	// of through the current sp.  That avoids the "what about
+	// alloca()" worry.  It also allows this code to be written in
+	// pure C and run in a non-inline context...
+	__asm__ volatile("ldr %0, [sp, #4]" : "=r"(lr));
+	if (arm_m_must_switch(lr)) {
+		__asm__ volatile("ldr %0, =arm_m_exc_exit;"
+				 "str %0, [sp, #4]" : "+r"(lr));
+	}
+#endif
 }
 
 static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)

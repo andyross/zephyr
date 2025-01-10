@@ -29,7 +29,9 @@ struct hw_frame_align_fpu {
 	uint32_t align_pad;
 };
 
-/* Zephyr's synthesized frame used during context switch */
+/* Zephyr's synthesized frame used during context switch on interrupt
+ * exit.  It's a minimal hardware frame plus storage for r4-11.
+ */
 struct synth_frame {
 	uint32_t r7, r8, r9, r10, r11;
 	uint32_t r4, r5, r6;		/* these match switch format */
@@ -104,6 +106,10 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 uint32_t *arm_m_cs_outgoing;
 uint32_t *arm_m_cs_incoming;
 
+// FIXME: the use of the tmp structs in the copy macros here forces
+// the compiler to zero-fill unused fields needlessly.  Should use
+// individual variables.
+
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
 #define HW_TO_SWITCH(hw, sw) do {				\
 	struct switch_frame swtmp = {				\
@@ -128,14 +134,14 @@ uint32_t *arm_m_cs_incoming;
 
 /* Reports if the passed return address is a valid EXC_RETURN (high
  * four bits set) that will restore to the PSP running in thread mode
- * (low four bits).  That is an interrupted Zephyr thread context.
- * For everything else, we just return directly via the
+ * (low four bits == 0xd).  That is an interrupted Zephyr thread
+ * context.  For everything else, we just return directly via the
  * hardware-pushed stack frame with no special handling. See ARMv7M
  * manual B1.5.8.
  */
 static bool arm_m_is_thread_return(uint32_t lr)
 {
-	return (lr & 0xf000000f) == 0xf000000f;
+	return (lr & 0xf000000f) == 0xf000000d;
 }
 
 /* Returns true if the EXC_RETURN address indicates a FPU subframe was
@@ -300,6 +306,8 @@ bool arm_m_must_switch(uint32_t lr)
 	last = arm_m_cpu_to_switch(last, fpu);
 	arm_m_switch_to_cpu(next);
 
+	__asm__ volatile("msr psp, %0" :: "r"(next));
+
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;
 
@@ -319,7 +327,7 @@ bool arm_m_must_switch(uint32_t lr)
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =arm_m_cs_outgoing;"
 	"  ldr r1, =arm_m_cs_incoming;"
-	"  ldr lr, =#0xf000000f;"
+	"  ldr lr, =#0xfffffffd;"
 	"  stm r0, {r4-r11};"
 	"  ldmia r1, {r7-r11};"
 	"  ldm r1, {r4-r6};"
