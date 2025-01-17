@@ -47,8 +47,8 @@ void my_fn(void *a, void *b, void *c)
 	register int D = 14;
 	register int E = 15;
 
-	while (true) {
-		printk("%s:%d\n", __func__, __LINE__);
+	for (int n = 0; /**/; n++) {
+		printk("%s:%d iter %d\n", __func__, __LINE__, n);
 		arm_m_switch(main_sh, &my_sh);
 
 		__ASSERT_NO_MSG(A == 11);
@@ -105,8 +105,9 @@ int main(void)
 	sum += A + B + C + D + E;
 
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
-	printk("Invoking SVC\n");
-	__asm__ volatile("svc 0");
+	//DEBUG
+	//printk("Invoking SVC\n");
+	//__asm__ volatile("svc 0");
 
 	__ASSERT_NO_MSG(A == 1);
 	__ASSERT_NO_MSG(B == 2);
@@ -118,20 +119,23 @@ int main(void)
 	/* Now likewise switch to and from a foreign stack and check */
 	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn, (void*)0, (void*)1, (void*)2);
 
-	printk("Switching to initialized handle...\n");
-	arm_m_switch(my_sh, &main_sh);
-	printk("...and back\n");
+	int cycles = 1;
+	for(int n = 0; n < cycles; n++) {
+		printk("Switching to initialized handle (iter %d)...\n", n);
+		arm_m_switch(my_sh, &main_sh);
+		printk("...and back\n");
 
-	__ASSERT_NO_MSG(A == 1);
-	__ASSERT_NO_MSG(B == 2);
-	__ASSERT_NO_MSG(C == 3);
-	__ASSERT_NO_MSG(D == 4);
-	__ASSERT_NO_MSG(E == 5);
-	__ASSERT_NO_MSG(F == 6);
+		__ASSERT_NO_MSG(A == 1);
+		__ASSERT_NO_MSG(B == 2);
+		__ASSERT_NO_MSG(C == 3);
+		__ASSERT_NO_MSG(D == 4);
+		__ASSERT_NO_MSG(E == 5);
+		__ASSERT_NO_MSG(F == 6);
+	}
 
 	/* Do it again, except via interrupt this time */
 	printk("Switch via interrupt...\n");
-	next_sh = main_sh;
+	next_sh = my_sh;
 	__asm__ volatile("svc 0");
 	printk("back\n");
 

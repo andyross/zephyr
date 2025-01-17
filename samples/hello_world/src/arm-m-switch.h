@@ -18,7 +18,7 @@ void arm_m_exc_exit(void);
 
 K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
 
-static ALWAYS_INLINE void arm_m_exc_tail(void)
+static inline void arm_m_exc_tail(void)
 {
 	/* Dirty trickery: we load this ISR's LR register (which
 	 * contains our interrupt return token) from the runtime stack
@@ -41,29 +41,15 @@ static ALWAYS_INLINE void arm_m_exc_tail(void)
 	 * call and return directly (reschedule is optional for direct
 	 * interrupts anyway).
 	 */
-	uint32_t *stack_top = K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
-		K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]);
-	uint32_t *lr = &stack_top[-1];
+	char *stack_top = (K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
+			       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
+	uint32_t *lr = &((uint32_t *) stack_top)[-1];
 	uint32_t hook = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
 
 	if (arm_m_must_switch(*lr)) {
 		printk("ANDY lr @ %p\n", lr);
 		*lr = hook;
 	}
-
-#if 0
-	// FIXME: it would probably be more robust, since this only
-	// ever happens for the outermost/lowest-priority interrupt,
-	// to write directly to the top of the interrupt stack instead
-	// of through the current sp.  That avoids the "what about
-	// alloca()" worry.  It also allows this code to be written in
-	// pure C and run in a non-inline context...
-	__asm__ volatile("ldr %0, [sp, #4]" : "=r"(lr));
-	if (arm_m_must_switch(lr)) {
-		__asm__ volatile("ldr %0, =arm_m_exc_exit;"
-				 "str %0, [sp, #4]" : "+r"(lr));
-	}
-#endif
 }
 
 static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)

@@ -9,7 +9,7 @@ struct hw_frame_base {
 	uint32_t apsr;
 };
 
-/* The hardware frame when entry is taken with FPU active */
+/* The hardware frame pushed when entry is taken with FPU active */
 struct hw_frame_fpu {
 	struct hw_frame_base base;
 	uint32_t s_regs[16];
@@ -17,7 +17,7 @@ struct hw_frame_fpu {
 	uint32_t reserved;
 };
 
-/* The hardware frame when entry happens with a misaligned stack */
+/* The hardware frame pushed when entry happens with a misaligned stack */
 struct hw_frame_align {
 	struct hw_frame_base base;
 	uint32_t align_pad;
@@ -30,13 +30,15 @@ struct hw_frame_align_fpu {
 };
 
 /* Zephyr's synthesized frame used during context switch on interrupt
- * exit.  It's a minimal hardware frame plus storage for r4-11.
+   exit.  It's a minimal hardware frame plus storage for r4-11.
  */
 struct synth_frame {
 	uint32_t r7, r8, r9, r10, r11;
 	uint32_t r4, r5, r6;		/* these match switch format */
 	struct hw_frame_base base;
 };
+
+// FIXME: add a build assert to for the r4-6 offsets to make sure they match
 
 /* Zephyr's frame used for suspended threads */
 struct switch_frame {
@@ -71,14 +73,13 @@ struct z_frame_fpu {
 	union u_frame u;
 };
 
-#define FRAMESZ (4 + MAX(sizeof(struct z_frame_fpu), sizeof(struct hw_frame_align_fpu)))
-
 /* Union of all possible stack frame formats, aligned at the top (!).
  * Note that FRAMESZ is constructed to be larger than any of them to
  * avoid having a zero-length array.  The code doesn't ever use the
  * size of this struct, it just wants to be have compiler-visible
  * offsets for in-place copies.
  */
+#define FRAMESZ (4 + MAX(sizeof(struct z_frame_fpu), sizeof(struct hw_frame_align_fpu)))
 #define PAD(T) char pad_##T[FRAMESZ - sizeof(struct T)]
 union frame {
 	struct { PAD(hw_frame_base);      struct hw_frame_base hw;          };
@@ -95,9 +96,7 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hw_a));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp_a));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(z));
-#ifdef CONFIG_FPU_SHARING
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
-#endif
 
 /* Pointers to the frame locations for the callee-saved registers, set
  * in arm_m_must_switch() and used by the fixup assembly in
@@ -156,7 +155,7 @@ static bool arm_m_fpu_state_pushed(uint32_t lr)
  * thread to a "synthesized" format that can be restored by the CPU
  * hardware on exception exit.
  */
-static void arm_m_switch_to_cpu(void *sp)
+static void *arm_m_switch_to_cpu(void *sp)
 {
 	union frame *f;
 
@@ -181,6 +180,7 @@ static void arm_m_switch_to_cpu(void *sp)
          */
         arm_m_cs_incoming = &f->z.u.hw.r7;
 
+	return &f->z.u.hw.base;
 }
 
 static void fpu_cs_copy(struct hw_frame_fpu *src, struct z_frame_fpu *dst)
@@ -296,17 +296,18 @@ bool arm_m_must_switch(uint32_t lr)
 		return false;
 	}
 
-	__asm__ volatile("mrs %0, psp" : "=r"(last));
-
 	bool fpu = arm_m_fpu_state_pushed(lr);
 
 	/* Rejigger the frame we're pickling, and unpickle the new
 	 * thread we're returning into
 	 */
+	__asm__ volatile("mrs %0, psp" : "=r"(last));
+	printk("ANDY psp was %p\n", last);
 	last = arm_m_cpu_to_switch(last, fpu);
-	arm_m_switch_to_cpu(next);
+	next = arm_m_switch_to_cpu(next);
 
 	__asm__ volatile("msr psp, %0" :: "r"(next));
+	printk("ANDY psp now %p\n", next);
 
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;
@@ -327,7 +328,7 @@ bool arm_m_must_switch(uint32_t lr)
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =arm_m_cs_outgoing;"
 	"  ldr r1, =arm_m_cs_incoming;"
-	"  ldr lr, =#0xfffffffd;"
+	"  ldr lr, =#0xfffffffd;" // FIXME: "movi #-3" is clearer
 	"  stm r0, {r4-r11};"
 	"  ldmia r1, {r7-r11};"
 	"  ldm r1, {r4-r6};"
