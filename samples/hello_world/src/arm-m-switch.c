@@ -38,8 +38,6 @@ struct synth_frame {
 	struct hw_frame_base base;
 };
 
-// FIXME: add a build assert to for the r4-6 offsets to make sure they match
-
 /* Zephyr's frame used for suspended threads */
 struct switch_frame {
 #ifdef CONFIG_BUILTIN_STACK_GUARD
@@ -102,9 +100,7 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
  * in arm_m_must_switch() and used by the fixup assembly in
  * arm_m_exc_exit.
  */
-// FIXME: make these an array to save an instruction
-uint32_t *arm_m_cs_outgoing;
-uint32_t *arm_m_cs_incoming;
+struct { void *out, *in; } arm_m_cs_ptrs;
 
 // FIXME: the use of the tmp structs in the copy macros here forces
 // the compiler to zero-fill unused fields needlessly.  Should use
@@ -176,10 +172,12 @@ static void *arm_m_switch_to_cpu(void *sp)
 	SWITCH_TO_SYNTH(f->z.u.sw, f->z.u.hw);
 #endif
 
+	// FIXME: set PSPLIM here!
+
 	/* Mark the callee-saved pointer for the fixup assembly.  Note
          * funny layout that puts r7 first!
          */
-        arm_m_cs_incoming = &f->z.u.hw.r7;
+        arm_m_cs_ptrs.in = &f->z.u.hw.r7;
 
 	return &f->z.u.hw.base;
 }
@@ -253,7 +251,7 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 #endif
 
         /* Mark the callee-saved pointer for the fixup assembly */
-        arm_m_cs_outgoing = &f->z.u.sw.r4;
+        arm_m_cs_ptrs.out = &f->z.u.sw.r4;
 
 	return &f->z.u.sw;
 }
@@ -327,11 +325,10 @@ bool arm_m_must_switch(uint32_t lr)
  * EXC_RETURN value indicating an integer-only restore.
  */
 __asm__("arm_m_exc_exit:;"
-	// FIXME: this loads the addresses, not the values!
-	"  ldr r0, =arm_m_cs_outgoing;"
-	"  ldr r1, =arm_m_cs_incoming;"
-	"  ldr lr, =#0xfffffffd;" // FIXME: "movi #-3" is clearer
+	"  ldr r0, =arm_m_cs_ptrs;"
+	"  ldm r0, {r0, r1};" /* fields: out, in */
+	"  mov lr, #0xfffffffd;"
 	"  stm r0, {r4-r11};"
-	"  ldmia r1, {r7-r11};"
+	"  ldm r1!, {r7-r11};"
 	"  ldm r1, {r4-r6};"
 	"  bx lr;");

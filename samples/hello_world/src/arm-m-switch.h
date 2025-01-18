@@ -95,7 +95,9 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "   push {r6};"
 		 "   vstmdb sp, s0-s31;"
 		 "1: push {r8};"          /* outgoing have_fpu */
+		 // FIXME: does r4 need "r4!" here?  Think it does
 		 "   ldmia r4, {r8};"     /* incoming have_fpu */
+		 // FIXME: r4 is the pointer! WTF?
 		 "   cmp r4, #0;"
 		 "   beq r8, 2f;"
 		 "   vldmia r4, {s0-s31};" /* restore FPU state */
