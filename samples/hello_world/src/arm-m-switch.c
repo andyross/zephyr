@@ -29,7 +29,7 @@ struct hw_frame_align_fpu {
 	uint32_t align_pad;
 };
 
-/* Zephyr's synthesized frame used during context switch on interrupt
+/* Zephyr's synthbesized frame used during context switch on interrupt
    exit.  It's a minimal hardware frame plus storage for r4-11.
  */
 struct synth_frame {
@@ -102,6 +102,7 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
  * in arm_m_must_switch() and used by the fixup assembly in
  * arm_m_exc_exit.
  */
+// FIXME: make these an array to save an instruction
 uint32_t *arm_m_cs_outgoing;
 uint32_t *arm_m_cs_incoming;
 
@@ -326,6 +327,7 @@ bool arm_m_must_switch(uint32_t lr)
  * EXC_RETURN value indicating an integer-only restore.
  */
 __asm__("arm_m_exc_exit:;"
+	// FIXME: this loads the addresses, not the values!
 	"  ldr r0, =arm_m_cs_outgoing;"
 	"  ldr r1, =arm_m_cs_incoming;"
 	"  ldr lr, =#0xfffffffd;" // FIXME: "movi #-3" is clearer

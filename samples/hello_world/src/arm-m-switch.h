@@ -74,8 +74,8 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "ldr r8, =3f;"           /* address of restore PC */
 		 "add r8, r8, #1;"        /* set thumb bit */
 		 "push {r6-r8};"
-		 "sub sp, sp, #32;"       /* skip over space for r5-r11 */
-		 "push {r0-r3};"
+		 "sub sp, sp, #24;"       /* skip over space for r6-r11 */
+		 "push {r0-r5};"
 		 "mov r2, #0x01000000;"   /* APSR (only care about thumb bit) */
 		 "mov r0, #0;"            /* Leave r0 zero for code blow */
 #ifdef CONFIG_BUILTIN_STACK_GUARD

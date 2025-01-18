@@ -105,7 +105,6 @@ int main(void)
 	sum += A + B + C + D + E;
 
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
-	//DEBUG
 	//printk("Invoking SVC\n");
 	//__asm__ volatile("svc 0");
 
