@@ -148,6 +148,14 @@ static bool arm_m_fpu_state_pushed(uint32_t lr)
 	return IS_ENABLED(CONFIG_CPU_HAS_FPU) ? !!(lr & 0x08000000) : false;
 }
 
+static uint32_t psplim(union frame *f)
+{
+#ifdef CONFIG_BUILTIN_STACK_GUARD
+	return f->z.u.sw.psplim;
+#endif
+	return 0;
+}
+
 /* Converts, in place, a pickled "switch" frame from a suspended
  * thread to a "synthesized" format that can be restored by the CPU
  * hardware on exception exit.
@@ -155,24 +163,30 @@ static bool arm_m_fpu_state_pushed(uint32_t lr)
 static void *arm_m_switch_to_cpu(void *sp)
 {
 	union frame *f;
+	uint32_t splim;
 
 #ifdef CONFIG_FPU_SHARING
 	bool have_fpu = !!*(uint32_t *)sp;
 
 	if (have_fpu) {
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
+		splim = psplim(f);
 		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
 		__asm__ volatile("vldm %0, {r0-s31}" :: "r"(&f->zfp.s_regs[0]));
 	} else {
 		f = CONTAINER_OF(sp, union frame, z.have_fpu);
+		splim = psplim(f);
 		SWITCH_TO_SYNTH(f->z.u.sw, f->zfp.u.hw);
 	}
 #else
 	f = CONTAINER_OF(sp, union frame, z.u.sw);
+	splim = psplim(f);
 	SWITCH_TO_SYNTH(f->z.u.sw, f->z.u.hw);
 #endif
 
-	// FIXME: set PSPLIM here!
+#ifdef CONFIG_BUILTIN_STACK_GUARD
+	__asm__ volatile("msr psplim, %0" :: "r"(splim));
+#endif
 
 	/* Mark the callee-saved pointer for the fixup assembly.  Note
          * funny layout that puts r7 first!
@@ -272,6 +286,11 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		return NULL;
 	}
 
+	/* FIXME: a useful trick here would be to initialize LR to
+	 * point to cleanup code, avoiding the need for the
+	 * z_thread_entry wrapper, saving a few words of stack frame
+	 * and a few cycles on thread entry.
+	 */
 	sw = (void *)(baddr + sz - sizeof(*sw));
 	*sw = (struct switch_frame) {
 		IF_ENABLED(CONFIG_BUILTIN_STACK_GUARD, (.psplim = baddr,))
@@ -279,6 +298,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		.r1 = (uint32_t) arg1,
 		.r2 = (uint32_t) arg2,
 		.pc = ((uint32_t) entry) | 1, /* set thumb bit! */
+		.apsr = 0x1000000,            /* thumb bit here too! */
 	};
 	return sw;
 }
@@ -301,12 +321,10 @@ bool arm_m_must_switch(uint32_t lr)
 	 * thread we're returning into
 	 */
 	__asm__ volatile("mrs %0, psp" : "=r"(last));
-	printk("ANDY psp was %p\n", last);
 	last = arm_m_cpu_to_switch(last, fpu);
 	next = arm_m_switch_to_cpu(next);
 
 	__asm__ volatile("msr psp, %0" :: "r"(next));
-	printk("ANDY psp now %p\n", next);
 
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;

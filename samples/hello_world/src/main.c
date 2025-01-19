@@ -35,6 +35,10 @@ void my_fn(void *a, void *b, void *c)
 {
 	printk("%s:%d\n", __func__, __LINE__);
 
+	void *psplim;
+	__asm__ volatile("mrs %0, psplim" : "=r"(psplim));
+	printk("In my_fn, PSPLIM = %p\n", psplim);
+
 	__ASSERT_NO_MSG((int)a == 0);
 	__ASSERT_NO_MSG((int)b == 1);
 	__ASSERT_NO_MSG((int)c == 2);
@@ -63,6 +67,10 @@ void my_svc(void)
 {
 	printk("%s:%d\n", __func__, __LINE__);
 
+	void *psp;
+	__asm__ volatile("mrs %0, psp" : "=r"(psp));
+	printk("  interrupted PSP %p\n", psp);
+
 	arm_m_exc_tail();
 }
 
@@ -89,6 +97,10 @@ int main(void)
 	vtor[11] = (int)my_svc;
 	printk("vtor[11] == %p (my_svc == %p)\n", (void*)vtor[11], my_svc);
 
+	void *psplim;
+	__asm__ volatile("mrs %0, psplim" : "=r"(psplim));
+	printk("In main, PSPLIM = %p\n", psplim);
+
 	/* "register" variables don't strictly force the compiler not
 	 * to spill them, but inspecting the generated code shows it's
 	 * leaving them in place across the switch.
@@ -105,8 +117,8 @@ int main(void)
 	sum += A + B + C + D + E;
 
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
-	//printk("Invoking SVC\n");
-	//__asm__ volatile("svc 0");
+	printk("Invoking SVC\n");
+	__asm__ volatile("svc 0");
 
 	__ASSERT_NO_MSG(A == 1);
 	__ASSERT_NO_MSG(B == 2);
@@ -118,7 +130,7 @@ int main(void)
 	/* Now likewise switch to and from a foreign stack and check */
 	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn, (void*)0, (void*)1, (void*)2);
 
-	int cycles = 1;
+	int cycles = 16;
 	for(int n = 0; n < cycles; n++) {
 		printk("Switching to initialized handle (iter %d)...\n", n);
 		arm_m_switch(my_sh, &main_sh);
