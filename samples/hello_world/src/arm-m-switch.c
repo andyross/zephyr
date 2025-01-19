@@ -113,6 +113,7 @@ struct { void *out, *in; } arm_m_cs_ptrs;
 		.r3 = hw.r3, .r12 = hw.r12, .lr = hw.lr,	\
 		.pc = hw.pc, .apsr = hw.apsr,			\
 	};							\
+	swtmp.pc |= 1; /* thumb bit! */				\
 	sw = swtmp;						\
 } while(false)
 
@@ -303,6 +304,8 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 	return sw;
 }
 
+void *DEBUG_exc_exit_handle;
+
 bool arm_m_must_switch(uint32_t lr)
 {
 	if (!arm_m_is_thread_return(lr)) {
@@ -328,6 +331,8 @@ bool arm_m_must_switch(uint32_t lr)
 
 	// FIXME: switch_handle disabled until final wiring
 	//arch_current_thread()->base.switch_handle = last;
+
+	DEBUG_exc_exit_handle = last;
 
 	return true;
 }

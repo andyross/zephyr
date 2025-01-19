@@ -31,6 +31,8 @@ void *next_sh;
 int sum;
 float fsum;
 
+extern void *DEBUG_exc_exit_handle;
+
 void my_fn(void *a, void *b, void *c)
 {
 	printk("%s:%d\n", __func__, __LINE__);
@@ -53,6 +55,13 @@ void my_fn(void *a, void *b, void *c)
 
 	for (int n = 0; /**/; n++) {
 		printk("%s:%d iter %d\n", __func__, __LINE__, n);
+
+		if (DEBUG_exc_exit_handle) {
+			printk("Using exception handle @ %p\n", DEBUG_exc_exit_handle);
+			main_sh = DEBUG_exc_exit_handle;
+			DEBUG_exc_exit_handle = NULL;
+		}
+
 		arm_m_switch(main_sh, &my_sh);
 
 		__ASSERT_NO_MSG(A == 11);
