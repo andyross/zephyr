@@ -182,8 +182,8 @@ static void *arm_m_switch_to_cpu(void *sp)
 	if (have_fpu) {
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
 		splim = psplim(f);
-		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
 		__asm__ volatile("vldm %0, {s0-s31}" :: "r"(&f->zfp.s_regs[0]));
+		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
 	} else {
 		f = CONTAINER_OF(sp, union frame, z.have_fpu);
 		splim = psplim(f);
@@ -263,22 +263,24 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	__asm__ volatile("mrs %0, psplim" : "=r"(f->z.u.sw.psplim));
 #endif
 
+	void *ret = &f->z.u.sw;
+
 #ifdef CONFIG_FPU_SHARING
 	if (fpu) {
 		__asm__ volatile("vstm %0, {s16-s31}" :: "r"(&f->zfp.s_regs[16]));
 		f->zfp.fpscr = fpscr;
 		f->zfp.have_fpu = true;
-		return &f->zfp.have_fpu;
+		ret = &f->zfp.have_fpu;
 	} else {
 		f->z.have_fpu = false;
-		return &f->z.have_fpu;
+		ret = &f->z.have_fpu;
 	}
 #endif
 
         /* Mark the callee-saved pointer for the fixup assembly */
         arm_m_cs_ptrs.out = &f->z.u.sw.r4;
 
-	return &f->z.u.sw;
+	return ret;
 }
 
 /* Constructs a new stack in the provided region (aligned to and in
