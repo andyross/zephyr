@@ -4,11 +4,6 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/kernel/thread.h>
 
-/* Declared extern here to simplify unit testing; normally found in
- * ksched.h, which is a kernel-only header.
- */
-void *z_get_next_switch_handle(void *interrupted);
-
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2);
 
@@ -41,14 +36,12 @@ static inline void arm_m_exc_tail(void)
 	 * call and return directly (reschedule is optional for direct
 	 * interrupts anyway).
 	 */
-	char *stack_top = (K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
-			       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
-	uint32_t *lr = &((uint32_t *) stack_top)[-1];
-	uint32_t hook = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
+	uint32_t *stack_top = (void *)(K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
+				       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
+	uint32_t *lr_ptr = &stack_top[-1];
 
-	if (arm_m_must_switch(*lr)) {
-		printk("ANDY lr @ %p\n", lr);
-		*lr = hook;
+	if (arm_m_must_switch(*lr_ptr)) {
+		*lr_ptr = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
 	}
 }
 
@@ -87,22 +80,22 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 #endif
 
 #ifdef CONFIG_FPU_SHARING
-		 /* Push FPU state to our outgoing stack */
-		 "   mrs r8, control;"   /* read CONTROL.FPCA */
-		 "   and r7, r8, #4;"    /* r7 == have_fpu */
+		 /* Push FPU state (if enabled) to our outgoing stack */
+		 "   mrs r8, control;"    /* read CONTROL.FPCA */
+		 "   and r7, r8, #4;"     /* r7 == have_fpu */
 		 "   cbz r7, 1f;"
-		 "   bic r8, r8, #4;"   /* clear bit */
-		 "   msr control, r8;"  /* clear CONTROL.FPCA */
+		 "   bic r8, r8, #4;"     /* clear bit */
+		 "   msr control, r8;"    /* clear CONTROL.FPCA */
 		 "   vmrs r6, fpscr;"
 		 "   push {r6};"
 		 "   vpush {s0-s31};"
-		 "1: push {r7};"         /* have_fpu word */
+		 "1: push {r7};"          /* have_fpu word */
 
-		 /* Pop FPU state from incoming frame in r4 */
-		 "   ldm r4!, {r8};"
+		 /* Pop FPU state (if present) from incoming frame in r4 */
+		 "   ldm r4!, {r8};"      /* have_fpu word */
 		 "   cmp r4, #0;"
 		 "   beq 2f;"
-		 "   vldm r4!, {s0-s31};"
+		 "   vldm r4!, {s0-s31};" /* (note: sets FPCA bit for us) */
 		 "   ldm r4!, {r6};"
 		 "   vmsr fpscr, r6;"
 		 "2:;"

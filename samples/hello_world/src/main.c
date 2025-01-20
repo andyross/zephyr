@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 
 /* Dirty trick to unit test the interrupt exit paths */
+extern void *next_sh;
 #define z_get_next_switch_handle(p) next_sh
 
 #include "arm-m-switch.c"

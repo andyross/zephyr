@@ -59,6 +59,7 @@ struct switch_frame {
 	uint32_t pc;
 };
 
+/* Union of synth and switch frame */
 union u_frame {
 	struct {
 		char pad[sizeof(struct switch_frame) - sizeof(struct synth_frame)];
@@ -67,6 +68,7 @@ union u_frame {
 	struct switch_frame sw;
 };
 
+/* u_frame with have_fpu flag prepended (zero value), but no FPU data */
 struct z_frame {
 #ifdef CONFIG_FPU_SHARING
 	uint32_t have_fpu;
@@ -74,6 +76,7 @@ struct z_frame {
 	union u_frame u;
 };
 
+/* u_frame + FPU data, with have_fpu (non-zero) */
 struct z_frame_fpu {
 	uint32_t have_fpu;
 	uint32_t s_regs[32];
@@ -106,9 +109,9 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp_a));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(z));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 
-/* Pointers to the frame locations for the callee-saved registers, set
- * in arm_m_must_switch() and used by the fixup assembly in
- * arm_m_exc_exit.
+/* Global pointers to the frame locations for the callee-saved
+ * registers.  Set in arm_m_must_switch(), and used by the fixup
+ * assembly in arm_m_exc_exit.
  */
 struct { void *out, *in; } arm_m_cs_ptrs;
 
@@ -263,24 +266,21 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	__asm__ volatile("mrs %0, psplim" : "=r"(f->z.u.sw.psplim));
 #endif
 
-	void *ret = &f->z.u.sw;
+        /* Mark the callee-saved pointer for the fixup assembly */
+        arm_m_cs_ptrs.out = &f->z.u.sw.r4;
 
 #ifdef CONFIG_FPU_SHARING
 	if (fpu) {
 		__asm__ volatile("vstm %0, {s16-s31}" :: "r"(&f->zfp.s_regs[16]));
 		f->zfp.fpscr = fpscr;
 		f->zfp.have_fpu = true;
-		ret = &f->zfp.have_fpu;
+		return &f->zfp.have_fpu;
 	} else {
 		f->z.have_fpu = false;
-		ret = &f->z.have_fpu;
+		return &f->z.have_fpu;
 	}
 #endif
-
-        /* Mark the callee-saved pointer for the fixup assembly */
-        arm_m_cs_ptrs.out = &f->z.u.sw.r4;
-
-	return ret;
+	return &f->z.u.sw;
 }
 
 /* Constructs a new stack in the provided region (aligned to and in
