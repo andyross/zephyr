@@ -1,5 +1,15 @@
 #include "arm-m-switch.h"
 
+// TODO:
+// + Finish FPU
+// + Tracing (call hooks)
+// + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)
+// + TLS (just swap the pointer)
+// + Userspace (syscall stub needed?)
+// + WTF is "ARM_STORE_EXC_RETURN"?  Not needed now I think?
+// + CONFIG_DEBUG_THREAD_INFO (some samples turn it on)
+//   (also EXTRA_EXCEPTION_INFO)
+
 /* The basic exception frame, popped by the hardware during return */
 struct hw_frame_base {
 	uint32_t r0, r1, r2, r3;
@@ -29,8 +39,8 @@ struct hw_frame_align_fpu {
 	uint32_t align_pad;
 };
 
-/* Zephyr's synthbesized frame used during context switch on interrupt
-   exit.  It's a minimal hardware frame plus storage for r4-11.
+/* Zephyr's synthesized frame used during context switch on interrupt
+ * exit.  It's a minimal hardware frame plus storage for r4-11.
  */
 struct synth_frame {
 	uint32_t r7, r8, r9, r10, r11;
@@ -173,7 +183,7 @@ static void *arm_m_switch_to_cpu(void *sp)
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
 		splim = psplim(f);
 		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
-		__asm__ volatile("vldm %0, {r0-s31}" :: "r"(&f->zfp.s_regs[0]));
+		__asm__ volatile("vldm %0, {s0-s31}" :: "r"(&f->zfp.s_regs[0]));
 	} else {
 		f = CONTAINER_OF(sp, union frame, z.have_fpu);
 		splim = psplim(f);
@@ -287,7 +297,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		return NULL;
 	}
 
-	/* FIXME: a useful trick here would be to initialize LR to
+	/* Note: a useful trick here would be to initialize LR to
 	 * point to cleanup code, avoiding the need for the
 	 * z_thread_entry wrapper, saving a few words of stack frame
 	 * and a few cycles on thread entry.
@@ -301,6 +311,10 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		.pc = ((uint32_t) entry) | 1, /* set thumb bit! */
 		.apsr = 0x1000000,            /* thumb bit here too! */
 	};
+
+	if (IS_ENABLED(CONFIG_FPU_SHARING)) {
+		return CONTAINER_OF(sw, struct z_frame_fpu, u.sw);
+	}
 	return sw;
 }
 

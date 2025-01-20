@@ -87,24 +87,25 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 #endif
 
 #ifdef CONFIG_FPU_SHARING
+		 /* Push FPU state to our outgoing stack */
 		 "   mrs r8, control;"   /* read CONTROL.FPCA */
-		 "   or r7, r8, ~4;"     /* cleared FPCA in r7 */
-		 "   tst r8, 4;"
-		 "   beq r8, 1f;"        /* check FPCA */
-		 "   mrs r6, fpscr;"     /* save FPU state to stack */
+		 "   and r7, r8, #4;"    /* r7 == have_fpu */
+		 "   cbz r7, 1f;"
+		 "   bic r8, r8, #4;"   /* clear bit */
+		 "   msr control, r8;"  /* clear CONTROL.FPCA */
+		 "   vmrs r6, fpscr;"
 		 "   push {r6};"
-		 "   vstmdb sp, s0-s31;"
-		 "1: push {r8};"          /* outgoing have_fpu */
-		 // FIXME: does r4 need "r4!" here?  Think it does
-		 "   ldmia r4, {r8};"     /* incoming have_fpu */
-		 // FIXME: r4 is the pointer! WTF?
+		 "   vpush {s0-s31};"
+		 "1: push {r7};"         /* have_fpu word */
+
+		 /* Pop FPU state from incoming frame in r4 */
+		 "   ldm r4!, {r8};"
 		 "   cmp r4, #0;"
-		 "   beq r8, 2f;"
-		 "   vldmia r4, {s0-s31};" /* restore FPU state */
-		 "   ldmia r4, {r6};"
-		 "   msr FPSCR, r6;"
-		 "   or r7, r7, 4;"       /* set FPCA */
-		 "2: msr control, r7;"
+		 "   beq 2f;"
+		 "   vldm r4!, {s0-s31};"
+		 "   ldm r4!, {r6};"
+		 "   vmsr fpscr, r6;"
+		 "2:;"
 #endif
 
 		 /* Save the outgoing switch handle (which is SP), swap stacks,
