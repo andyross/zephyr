@@ -164,13 +164,11 @@ static bool arm_m_fpu_state_pushed(uint32_t lr)
 	return IS_ENABLED(CONFIG_CPU_HAS_FPU) ? !!(lr & 0x08000000) : false;
 }
 
-static uint32_t psplim(union frame *f)
-{
 #ifdef CONFIG_BUILTIN_STACK_GUARD
-	return f->z.u.sw.psplim;
+#define PSPLIM(f) ((f)->z.u.sw.psplim)
+#else
+#define PSPLIM(f) 0
 #endif
-	return 0;
-}
 
 /* Converts, in place, a pickled "switch" frame from a suspended
  * thread to a "synthesized" format that can be restored by the CPU
@@ -186,17 +184,17 @@ static void *arm_m_switch_to_cpu(void *sp)
 
 	if (have_fpu) {
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
-		splim = psplim(f);
+		splim = PSPLIM(f);
 		__asm__ volatile("vldm %0, {s0-s31}" :: "r"(&f->zfp.s_regs[0]));
 		SWITCH_TO_SYNTH(f->zfp.u.sw, f->zfp.u.hw);
 	} else {
 		f = CONTAINER_OF(sp, union frame, z.have_fpu);
-		splim = psplim(f);
+		splim = PSPLIM(f);
 		SWITCH_TO_SYNTH(f->z.u.sw, f->zfp.u.hw);
 	}
 #else
 	f = CONTAINER_OF(sp, union frame, z.u.sw);
-	splim = psplim(f);
+	splim = PSPLIM(f);
 	SWITCH_TO_SYNTH(f->z.u.sw, f->z.u.hw);
 #endif
 
@@ -235,6 +233,15 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	 * here when PSPLIM is enabled.
 	 */
 
+	/* Lazy FPU stacking is enabled, so before we touch the stack
+	 * frame we have to tickle the FPU to force it to spill the
+	 * caller-save registers.  There's no "VNOP" instruction
+	 * sadly, so do a dummy move to a GPR
+	 */
+	if (fpu) {
+		__asm__ volatile("vmov %0, s0" : "=r"(fpscr));
+	}
+
 	if (IS_ENABLED(CONFIG_FPU_SHARING) && fpu) {
 		fpscr = CONTAINER_OF(sp, struct hw_frame_fpu, base)->fpscr;
 	}
@@ -248,6 +255,8 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	 * we must copy the 16 spilled registers first, to make room
 	 * for the copy.
 	 */
+	// FIXME: switch frame has invariant location at f->z.u.sw,
+	// shouldn't be a macro agument
 	if (!fpu && !padded) {
 		f = CONTAINER_OF(sp, union frame, hw.r0);
 		HW_TO_SWITCH(f->hw, f->z.u.sw);
@@ -344,7 +353,6 @@ bool arm_m_must_switch(uint32_t lr)
 	__asm__ volatile("mrs %0, psp" : "=r"(last));
 	last = arm_m_cpu_to_switch(last, fpu);
 	next = arm_m_switch_to_cpu(next);
-
 	__asm__ volatile("msr psp, %0" :: "r"(next));
 
 	// FIXME: switch_handle disabled until final wiring

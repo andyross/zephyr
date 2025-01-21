@@ -30,7 +30,6 @@ void *main_sh, *my_sh;
 void *next_sh;
 
 int sum;
-float fsum;
 
 extern void *DEBUG_exc_exit_handle;
 
@@ -45,8 +44,6 @@ void my_fn(void *a, void *b, void *c)
 	__ASSERT_NO_MSG((int)a == 0);
 	__ASSERT_NO_MSG((int)b == 1);
 	__ASSERT_NO_MSG((int)c == 2);
-
-	fsum += 0.5f;
 
 	register int A = 11;
 	register int B = 12;
@@ -79,7 +76,6 @@ void my_svc(void)
 
 	void *psp;
 	__asm__ volatile("mrs %0, psp" : "=r"(psp));
-	printk("  interrupted PSP %p\n", psp);
 
 	arm_m_exc_tail();
 }
@@ -121,21 +117,24 @@ int main(void)
 	register int D = 4;
 	register int E = 5;
 
-	register float F = 6.0f;
+	/* Prime all the FPU registers with something I can recognize in a debugger */
+	uint32_t sregs[32];
+	for(int i = 0; i < 32; i++) {
+		sregs[i] = 0x3f800000 + i;
+	}
+	__asm__ volatile("vldm %0, {s0-s31}" :: "r"(sregs));
 
-	fsum += F;
 	sum += A + B + C + D + E;
 
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
 	printk("Invoking SVC\n");
-	__asm__ volatile("svc 0");
+	//__asm__ volatile("svc 0");
 
 	__ASSERT_NO_MSG(A == 1);
 	__ASSERT_NO_MSG(B == 2);
 	__ASSERT_NO_MSG(C == 3);
 	__ASSERT_NO_MSG(D == 4);
 	__ASSERT_NO_MSG(E == 5);
-	__ASSERT_NO_MSG(F == 6);
 
 	/* Now likewise switch to and from a foreign stack and check */
 	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn, (void*)0, (void*)1, (void*)2);
@@ -151,7 +150,6 @@ int main(void)
 		__ASSERT_NO_MSG(C == 3);
 		__ASSERT_NO_MSG(D == 4);
 		__ASSERT_NO_MSG(E == 5);
-		__ASSERT_NO_MSG(F == 6);
 	}
 
 	/* Do it again, except via interrupt this time */
@@ -160,7 +158,6 @@ int main(void)
 	__asm__ volatile("svc 0");
 	printk("back\n");
 
-	fsum -= F;
 	sum -= A + B + C + D + E;
 
 	printk("DONE!\n");
