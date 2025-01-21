@@ -11,6 +11,8 @@ bool arm_m_must_switch(uint32_t lr);
 
 void arm_m_exc_exit(void);
 
+extern uintptr_t z_arm_tls_ptr;
+
 K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
 
 static inline void arm_m_exc_tail(void)
@@ -47,6 +49,13 @@ static inline void arm_m_exc_tail(void)
 
 static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 {
+#if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD)
+	z_arm_configure_dynamic_mpu_regions(_current);
+#endif
+#ifdef CONFIG_THREAD_LOCAL_STORAGE
+	z_arm_tls_ptr = _current->tls;
+#endif
+
 	/* new switch handle in r4, old switch handle pointer in r5.
 	 * r6-r8 are used by the code here, and r9-r11 are
 	 * unsaved/clobbered (they are very likely to be caller-saved

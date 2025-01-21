@@ -2,13 +2,15 @@
 
 // TODO:
 // + Finish FPU
-// + Tracing (call hooks)
 // + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)
-// + TLS (just swap the pointer)
-// + Userspace (syscall stub needed?)
-// + WTF is "ARM_STORE_EXC_RETURN"?  Not needed now I think?
-// + CONFIG_DEBUG_THREAD_INFO (some samples turn it on)
-//   (also EXTRA_EXCEPTION_INFO)
+// + CONFIG_DEBUG_THREAD_INFO is tied to the old frame format and some
+//   samples turn it on.  Also EXTRA_EXCEPTION_INFO is involved here.
+// + Userspace needs some thought.  The SVC arrives on the MSP stack,
+//   then needs to stack swap and downgrade to privileged/PSP on the
+//   kernel stack, then arrange for a restore of the pushed
+//   caller-saved registers before returning to unprivileged mode.
+//   Older code trampolines through PendSV to do this (basically
+//   "context switching" into the kernel stack) and can't be reused.
 
 /* The basic exception frame, popped by the hardware during return */
 struct hw_frame_base {
@@ -363,6 +365,9 @@ bool arm_m_must_switch(uint32_t lr)
  * FPU restore is handled in software, so we always use a constant
  * EXC_RETURN value indicating an integer-only restore.
  */
+// FIXME: when userspace is enabled, we can take an ISR from kernel
+// threads, which (I think) are "privileged" in the sense of
+// CONTROL.nPRIV.  That would require a different EXC_RETURN value.
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =arm_m_cs_ptrs;"
 	"  ldm r0, {r0, r1};" /* fields: out, in */
