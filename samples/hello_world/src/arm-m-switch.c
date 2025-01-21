@@ -317,7 +317,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 	};
 
 	if (IS_ENABLED(CONFIG_FPU_SHARING)) {
-		return CONTAINER_OF(sw, struct z_frame_fpu, u.sw);
+		return CONTAINER_OF(sw, struct z_frame, u.sw);
 	}
 	return sw;
 }
