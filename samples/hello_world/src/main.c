@@ -4,21 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "arm-m-switch.h"
-
 #include <zephyr/kernel.h>
-
-/* Dirty trick to unit test the interrupt exit paths */
-//extern void *next_sh;
-//#define z_get_next_switch_handle(p) next_sh
-//#include "arm-m-switch.c"
-
-// Stuff to test:
-// 0. Take an interrupt and return alive
-// 1. Cross product of:
-//    + Contexts saved from {init, switch, switch+fpu, irq, irq+fpu}
-//    + Restore via {switch, irq}
-// 2. Nested interrupts shouldn't do anything funny (hard to do here though)z
+#include <kernel_arch_func.h>
 
 char stack[4096];
 

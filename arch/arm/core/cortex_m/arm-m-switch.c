@@ -2,10 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <zephyr/sys/util.h>
-//#include <ksched.h> // FIXME, uncork once moved
-#include "arm-m-switch.h"
-
-void *z_get_next_switch_handle(void *interrupted); // FIXME: remove once ksched.h
+#include <ksched.h>
 
 /* The basic exception frame, popped by the hardware during return */
 struct hw_frame_base {

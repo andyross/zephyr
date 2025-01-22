@@ -8,6 +8,8 @@
 #include <zephyr/kernel/thread.h>
 #include <zephyr/kernel/thread_stack.h>
 
+void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
+
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2);
 

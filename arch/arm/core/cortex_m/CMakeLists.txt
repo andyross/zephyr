@@ -16,6 +16,7 @@ zephyr_library_sources(
   prep_c.c
   thread.c
   cpu_idle.c
+  arm-m-switch.c
   )
 
 zephyr_library_sources_ifndef(CONFIG_ARM_CUSTOM_INTERRUPT_CONTROLLER irq_init.c)

@@ -21,6 +21,7 @@
 #define ZEPHYR_ARCH_ARM_INCLUDE_CORTEX_M_KERNEL_ARCH_FUNC_H_
 
 #include <zephyr/platform/hooks.h>
+#include <cortex_m/arm-m-switch.h>
 
 #ifdef __cplusplus
 extern "C" {
