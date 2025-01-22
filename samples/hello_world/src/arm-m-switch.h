@@ -112,7 +112,6 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "   vmsr fpscr, r6;"
 		 "2:;"
 #endif
-
 		 /* Save the outgoing switch handle (which is SP), swap stacks,
 		  * and enable interrupts.  The restore process is
 		  * interruptible code (running in the incoming thread) once
@@ -137,7 +136,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "pop {r0-r12, lr};"
 		 "pop {pc};"
 
-		 "3:"
+		 "3:" /* Label for restore address */
 		 :: "r"(r4), "r"(r5) :
 		  "r6", "r7", "r8", "r9", "r10", "r11");
 }

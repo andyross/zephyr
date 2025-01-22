@@ -2,10 +2,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <zephyr/sys/util.h>
+//#include <ksched.h> // FIXME, uncork once moved
 #include "arm-m-switch.h"
+
+void *z_get_next_switch_handle(void *interrupted); // FIXME: remove once ksched.h
 
 // TODO:
 //
+// + Check stack bounds in cpu_to_switch() with PSPLIM enabled,
+//   because the switch frame can be bigger than the hardware frame.
 // + arch_float_en/disable(), also need to clear FPU flag on switch
 //   so it doesn't propagate to non-FPU threads by accident.
 // + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)
@@ -56,7 +61,7 @@ struct synth_frame {
 	struct hw_frame_base base;
 };
 
-/* Zephyr's frame used for suspended threads */
+/* Zephyr's custom frame used for suspended threads, now hw-compatible */
 struct switch_frame {
 #ifdef CONFIG_BUILTIN_STACK_GUARD
 	uint32_t psplim;
@@ -67,7 +72,7 @@ struct switch_frame {
 	uint32_t pc;
 };
 
-/* Union of synth and switch frame */
+/* Union of synth and switch frame, used during context switch */
 union u_frame {
 	struct {
 		char pad[sizeof(struct switch_frame) - sizeof(struct synth_frame)];
@@ -76,7 +81,7 @@ union u_frame {
 	struct switch_frame sw;
 };
 
-/* u_frame with have_fpu flag prepended (zero value), but no FPU data */
+/* u_frame with have_fpu flag prepended (zero value), no FPU state */
 struct z_frame {
 #ifdef CONFIG_FPU_SHARING
 	uint32_t have_fpu;
@@ -123,19 +128,16 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
  */
 struct { void *out, *in; } arm_m_cs_ptrs;
 
-// FIXME: the use of the tmp structs in the copy macros here forces
-// the compiler to zero-fill unused fields needlessly.  Should use
-// individual variables.
+/* Unit test hook, unused in production */
+void *arm_m_last_switch_handle;
 
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
-#define HW_TO_SWITCH(hw, sw) do {				\
-	struct switch_frame swtmp = {				\
-		.r0 = hw.r0, .r1 = hw.r1, .r2 = hw.r2,		\
-		.r3 = hw.r3, .r12 = hw.r12, .lr = hw.lr,	\
-		.pc = hw.pc, .apsr = hw.apsr,			\
-	};							\
-	swtmp.pc |= 1; /* thumb bit! */				\
-	sw = swtmp;						\
+#define HW_TO_SWITCH(hw, sw) do {					\
+	uint32_t r0 = hw.r0, r1 = hw.r1, r2 = hw.r2, r3 = hw.r3; 	\
+	uint32_t r12 = hw.r12, lr = hw.lr, pc = hw.pc, apsr = hw.apsr;	\
+	pc |= 1; /* thumb bit! */					\
+	sw.r0 = r0; sw.r1 = r1; sw.r2 = r2; sw.r3 = r3;			\
+	sw.r12 = r12; sw.lr = lr; sw.pc = pc; sw.apsr = apsr;		\
 } while(false)
 
 /* Emits an in-place copy from a switch_frame to a synth_frame */
@@ -186,7 +188,11 @@ static void *arm_m_switch_to_cpu(void *sp)
 	uint32_t splim;
 
 #ifdef CONFIG_FPU_SHARING
-	bool have_fpu = !!*(uint32_t *)sp;
+	/* When FPU switching is enabled, the suspended handle always
+	 * points to the have_fpu word, which will be followed by FPU
+	 * state if non-zero.
+	 */
+	bool have_fpu = (*(uint32_t *)sp) != 0;
 
 	if (have_fpu) {
 		f = CONTAINER_OF(sp, union frame, zfp.have_fpu);
@@ -234,11 +240,6 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	bool padded = (base->apsr & 0x200);
 	uint32_t fpscr;
 
-	/* NOTE: the converted switch frame can be bigger than the
-	 * input hardware frame.  We should be checking stack bounds
-	 * here when PSPLIM is enabled.
-	 */
-
 	if (fpu && IS_ENABLED(CONFIG_FPU_SHARING)) {
 		uint32_t dummy;
 
@@ -267,8 +268,6 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	 * we must copy the 16 spilled registers first, to make room
 	 * for the copy.
 	 */
-	// FIXME: switch frame has invariant location at f->z.u.sw,
-	// shouldn't be a macro agument
 	if (!fpu && !padded) {
 		f = CONTAINER_OF(sp, union frame, hw.r0);
 		HW_TO_SWITCH(f->hw, f->z.u.sw);
@@ -342,10 +341,6 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 	}
 	return sw;
 }
-
-void *arm_m_last_switch_handle;
-
-void *z_get_next_switch_handle(void *interrupted);
 
 bool arm_m_must_switch(uint32_t lr)
 {
