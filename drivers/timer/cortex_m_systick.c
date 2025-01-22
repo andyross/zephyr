@@ -460,12 +460,9 @@ static int sys_clock_driver_init(void)
 	overflow_cyc = 0U;
 	SysTick->LOAD = last_load - 1;
 	SysTick->VAL = 0; /* resets timer to last_load */
-#if 0
-	// FIXME: disable interrupts
 	SysTick->CTRL |= (SysTick_CTRL_ENABLE_Msk |
 			  SysTick_CTRL_TICKINT_Msk |
 			  SysTick_CTRL_CLKSOURCE_Msk);
-#endif
 	return 0;
 }
 
