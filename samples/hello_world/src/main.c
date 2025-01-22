@@ -5,12 +5,12 @@
  */
 
 #include <zephyr/kernel.h>
+#include "arm-m-switch.h"
 
 /* Dirty trick to unit test the interrupt exit paths */
-extern void *next_sh;
-#define z_get_next_switch_handle(p) next_sh
-
-#include "arm-m-switch.c"
+//extern void *next_sh;
+//#define z_get_next_switch_handle(p) next_sh
+//#include "arm-m-switch.c"
 
 // Stuff to test:
 // 0. Take an interrupt and return alive
@@ -31,7 +31,13 @@ void *next_sh;
 
 int sum;
 
-extern void *DEBUG_exc_exit_handle;
+extern void *arm_m_last_switch_handle;
+
+void *z_get_next_switch_handle(void *interrupted)
+{
+	return next_sh;
+}
+
 
 void my_fn(void *a, void *b, void *c)
 {
@@ -54,10 +60,10 @@ void my_fn(void *a, void *b, void *c)
 	for (int n = 0; /**/; n++) {
 		printk("%s:%d iter %d\n", __func__, __LINE__, n);
 
-		if (DEBUG_exc_exit_handle) {
-			printk("Using exception handle @ %p\n", DEBUG_exc_exit_handle);
-			main_sh = DEBUG_exc_exit_handle;
-			DEBUG_exc_exit_handle = NULL;
+		if (arm_m_last_switch_handle) {
+			printk("Using exception handle @ %p\n", arm_m_last_switch_handle);
+			main_sh = arm_m_last_switch_handle;
+			arm_m_last_switch_handle = NULL;
 		}
 
 		arm_m_switch(main_sh, &my_sh);
@@ -117,12 +123,14 @@ int main(void)
 	register int D = 4;
 	register int E = 5;
 
+#ifdef CONFIG_FPU_SHARING
 	/* Prime all the FPU registers with something I can recognize in a debugger */
 	uint32_t sregs[32];
 	for(int i = 0; i < 32; i++) {
 		sregs[i] = 0x3f800000 + i;
 	}
 	__asm__ volatile("vldm %0, {s0-s31}" :: "r"(sregs));
+#endif
 
 	sum += A + B + C + D + E;
 

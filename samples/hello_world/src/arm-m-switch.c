@@ -1,3 +1,4 @@
+#include <zephyr/kernel.h>
 #include "arm-m-switch.h"
 
 // TODO:
@@ -235,14 +236,19 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	 * here when PSPLIM is enabled.
 	 */
 
-	/* Lazy FPU stacking is enabled, so before we touch the stack
-	 * frame we have to tickle the FPU to force it to spill the
-	 * caller-save registers.  There's no "VNOP" instruction
-	 * sadly, so do a dummy move to a GPR.  If lazy stacking is
-	 * not enabled for some reason, this is a clean noop.
-	 */
-	if (fpu) {
-		__asm__ volatile("vmov %0, s0" : "=r"(fpscr));
+	if (fpu && IS_ENABLED(CONFIG_FPU_SHARING)) {
+		uint32_t dummy;
+
+		/* Lazy FPU stacking is enabled, so before we touch
+		 * the stack frame we have to tickle the FPU to force
+		 * it to spill the caller-save registers.  Then clear
+		 * CONTROL.FPCA which gets set again by that instruction.
+		 */
+		__asm__ volatile("vmov %0, s0;"
+				 "mrs %0, control;"
+				 "bic %0, %0, #4;"
+				 "msr control, %0;"
+				 :: "r"(dummy));
 	}
 
 	if (IS_ENABLED(CONFIG_FPU_SHARING) && fpu) {
@@ -334,7 +340,9 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 	return sw;
 }
 
-void *DEBUG_exc_exit_handle;
+void *arm_m_last_switch_handle;
+
+void *z_get_next_switch_handle(void *interrupted);
 
 bool arm_m_must_switch(uint32_t lr)
 {
@@ -358,10 +366,11 @@ bool arm_m_must_switch(uint32_t lr)
 	next = arm_m_switch_to_cpu(next);
 	__asm__ volatile("msr psp, %0" :: "r"(next));
 
-	// FIXME: switch_handle disabled until final wiring
-	//arch_current_thread()->base.switch_handle = last;
-
-	DEBUG_exc_exit_handle = last;
+#if !defined(CONFIG_MULTITHREADING)
+	arm_m_last_switch_handle = last;
+#elif defined(CONFIG_USE_SWITCH)
+	arch_current_thread()->base.switch_handle = last;
+#endif
 
 	return true;
 }
@@ -376,7 +385,8 @@ bool arm_m_must_switch(uint32_t lr)
  * FPU restore is handled in software, so we always use a constant
  * EXC_RETURN value indicating an integer-only restore.
  */
-__asm__("arm_m_exc_exit:;"
+__asm__(".globl arm_m_exc_exit;"
+	"arm_m_exc_exit:;"
 	"  ldr r0, =arm_m_cs_ptrs;"
 	"  ldm r0, {r0, r1};" /* fields: out, in */
 	"  mov lr, #0xfffffffd;"
