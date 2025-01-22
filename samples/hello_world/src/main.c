@@ -4,8 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/kernel.h>
 #include "arm-m-switch.h"
+
+#include <zephyr/kernel.h>
 
 /* Dirty trick to unit test the interrupt exit paths */
 //extern void *next_sh;

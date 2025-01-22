@@ -1,8 +1,11 @@
-#include <zephyr/kernel.h>
+/* Copyright 2025 The ChromiumOS Authors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#include <zephyr/sys/util.h>
 #include "arm-m-switch.h"
 
 // TODO:
-
+//
 // + arch_float_en/disable(), also need to clear FPU flag on switch
 //   so it doesn't propagate to non-FPU threads by accident.
 // + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)

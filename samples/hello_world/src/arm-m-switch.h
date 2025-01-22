@@ -1,8 +1,12 @@
+/* Copyright 2025 The ChromiumOS Authors
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #ifndef _ZEPHYR_ARCH_ARM_M_SWITCH_H
 #define _ZEPHYR_ARCH_ARM_M_SWITCH_H
 
-#include <zephyr/sys/util.h>
+#include <stdint.h>
 #include <zephyr/kernel/thread.h>
+#include <zephyr/kernel/thread_stack.h>
 
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2);
@@ -89,12 +93,12 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 #endif
 
 #ifdef CONFIG_FPU_SHARING
-		 /* Push FPU state (if enabled) to our outgoing stack */
+		 /* Push FPU state (if active) to our outgoing stack */
 		 "   mrs r8, control;"    /* read CONTROL.FPCA */
 		 "   and r7, r8, #4;"     /* r7 == have_fpu */
 		 "   cbz r7, 1f;"
-		 "   bic r8, r8, #4;"     /* clear bit */
-		 "   msr control, r8;"    /* clear CONTROL.FPCA */
+		 "   bic r8, r8, #4;"     /* clear CONTROL.FPCA */
+		 "   msr control, r8;"
 		 "   vmrs r6, fpscr;"
 		 "   push {r6};"
 		 "   vpush {s0-s31};"
@@ -102,8 +106,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 
 		 /* Pop FPU state (if present) from incoming frame in r4 */
 		 "   ldm r4!, {r8};"      /* have_fpu word */
-		 "   cmp r8, #0;"
-		 "   beq 2f;"
+		 "   cbz r8, 2f;"
 		 "   vldm r4!, {s0-s31};" /* (note: sets FPCA bit for us) */
 		 "   ldm r4!, {r6};"
 		 "   vmsr fpscr, r6;"
