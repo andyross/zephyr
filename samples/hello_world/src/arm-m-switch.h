@@ -105,8 +105,8 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "1: push {r7};"          /* have_fpu word */
 
 		 /* Pop FPU state (if present) from incoming frame in r4 */
-		 "   ldm r4!, {r8};"      /* have_fpu word */
-		 "   cbz r8, 2f;"
+		 "   ldm r4!, {r7};"      /* have_fpu word */
+		 "   cbz r7, 2f;"
 		 "   vldm r4!, {s0-s31};" /* (note: sets FPCA bit for us) */
 		 "   ldm r4!, {r6};"
 		 "   vmsr fpscr, r6;"

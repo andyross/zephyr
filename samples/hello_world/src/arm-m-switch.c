@@ -7,22 +7,6 @@
 
 void *z_get_next_switch_handle(void *interrupted); // FIXME: remove once ksched.h
 
-// TODO:
-//
-// + Check stack bounds in cpu_to_switch() with PSPLIM enabled,
-//   because the switch frame can be bigger than the hardware frame.
-// + arch_float_en/disable(), also need to clear FPU flag on switch
-//   so it doesn't propagate to non-FPU threads by accident.
-// + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)
-// + CONFIG_DEBUG_THREAD_INFO is tied to the old frame format and some
-//   samples turn it on.  Also EXTRA_EXCEPTION_INFO is involved here.
-// + Need to track and restore CONTROL.nPRIV bit so we can switch
-//   between kernel/user threads.
-// + Userspace needs some thought & rewrite, I think.  The SVC arrives
-//   on the MSP stack, then needs to "return" into the privileged
-//   handler, which then drops privilege and hand-switches back to the
-//   hardware frame.  I think?
-
 /* The basic exception frame, popped by the hardware during return */
 struct hw_frame_base {
 	uint32_t r0, r1, r2, r3;
