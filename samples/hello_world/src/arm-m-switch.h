@@ -22,7 +22,7 @@ static inline void arm_m_exc_tail(void)
 	 * frame pushed to the top of the interrupt stack on entry.
 	 * Check it to see if we can/should return to a different
 	 * thread (which will then have magically pickled our
-	 * interrupted stackc into "switch" format), and then if so:
+	 * interrupted stack into "switch" format), and then if so:
 	 * CLOBBER it with the address of our fixup code so that we
 	 * can finish saving the interrupted r4-r11 registers before
 	 * returning from the interrupt.
@@ -102,7 +102,7 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 
 		 /* Pop FPU state (if present) from incoming frame in r4 */
 		 "   ldm r4!, {r8};"      /* have_fpu word */
-		 "   cmp r4, #0;"
+		 "   cmp r8, #0;"
 		 "   beq 2f;"
 		 "   vldm r4!, {s0-s31};" /* (note: sets FPCA bit for us) */
 		 "   ldm r4!, {r6};"

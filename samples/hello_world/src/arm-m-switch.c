@@ -1,16 +1,18 @@
 #include "arm-m-switch.h"
 
 // TODO:
-// + Finish FPU
+
+// + arch_float_en/disable(), also need to clear FPU flag on switch
+//   so it doesn't propagate to non-FPU threads by accident.
 // + Cortex M0 (ARMv6) support (some LDM/STM variants aren't there?)
 // + CONFIG_DEBUG_THREAD_INFO is tied to the old frame format and some
 //   samples turn it on.  Also EXTRA_EXCEPTION_INFO is involved here.
-// + Userspace needs some thought.  The SVC arrives on the MSP stack,
-//   then needs to stack swap and downgrade to privileged/PSP on the
-//   kernel stack, then arrange for a restore of the pushed
-//   caller-saved registers before returning to unprivileged mode.
-//   Older code trampolines through PendSV to do this (basically
-//   "context switching" into the kernel stack) and can't be reused.
+// + Need to track and restore CONTROL.nPRIV bit so we can switch
+//   between kernel/user threads.
+// + Userspace needs some thought & rewrite, I think.  The SVC arrives
+//   on the MSP stack, then needs to "return" into the privileged
+//   handler, which then drops privilege and hand-switches back to the
+//   hardware frame.  I think?
 
 /* The basic exception frame, popped by the hardware during return */
 struct hw_frame_base {
@@ -236,7 +238,8 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	/* Lazy FPU stacking is enabled, so before we touch the stack
 	 * frame we have to tickle the FPU to force it to spill the
 	 * caller-save registers.  There's no "VNOP" instruction
-	 * sadly, so do a dummy move to a GPR
+	 * sadly, so do a dummy move to a GPR.  If lazy stacking is
+	 * not enabled for some reason, this is a clean noop.
 	 */
 	if (fpu) {
 		__asm__ volatile("vmov %0, s0" : "=r"(fpscr));
@@ -373,9 +376,6 @@ bool arm_m_must_switch(uint32_t lr)
  * FPU restore is handled in software, so we always use a constant
  * EXC_RETURN value indicating an integer-only restore.
  */
-// FIXME: when userspace is enabled, we can take an ISR from kernel
-// threads, which (I think) are "privileged" in the sense of
-// CONTROL.nPRIV.  That would require a different EXC_RETURN value.
 __asm__("arm_m_exc_exit:;"
 	"  ldr r0, =arm_m_cs_ptrs;"
 	"  ldm r0, {r0, r1};" /* fields: out, in */

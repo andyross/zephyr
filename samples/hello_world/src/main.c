@@ -128,7 +128,8 @@ int main(void)
 
 	/* Hit an interrupt and make sure CPU state doesn't get messed up */
 	printk("Invoking SVC\n");
-	//__asm__ volatile("svc 0");
+	__asm__ volatile("svc 0");
+	printk("...back\n");
 
 	__ASSERT_NO_MSG(A == 1);
 	__ASSERT_NO_MSG(B == 2);
@@ -141,7 +142,7 @@ int main(void)
 
 	int cycles = 16;
 	for(int n = 0; n < cycles; n++) {
-		printk("Switching to initialized handle (iter %d)...\n", n);
+		printk("main() switching to my_fn() (iter %d)...\n", n);
 		arm_m_switch(my_sh, &main_sh);
 		printk("...and back\n");
 
