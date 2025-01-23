@@ -1,10 +1,6 @@
-/*
- * Copyright (c) 2012-2014 Wind River Systems, Inc.
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #include <zephyr/kernel.h>
+#include <zephyr/linker/linker-defs.h>
+#include <zephyr/ztest.h>
 #include <kernel_arch_func.h>
 
 char stack[4096];
@@ -74,29 +70,9 @@ void my_svc(void)
 	arm_m_exc_tail();
 }
 
-int main(void)
+//int main(void)
+ZTEST(arm_m_switch, smoke)
 {
-	/* Hijack the vector table by copying it into writable RAM */
-	static uint32_t __aligned(1024) vectors[256];
-	uint32_t *vtor_p = (void *)0xe000ed08;
-	uint32_t *vtor = (void *)*vtor_p;
-	extern char _vector_start, _vector_end;
-	int nv = (&_vector_end - &_vector_start) / sizeof(uint32_t);
-
-	printk("vtor @%p\n", vtor);
-	for (int i = 0; i < nv; i++) {
-		vectors[i] = vtor[i];
-	}
-	*vtor_p = (uint32_t) &vectors[0];
-	vtor = (void *)*vtor_p;
-	printk("vtor now @%p\n", vtor);
-
-	/* And hook the SVC call with our own function above, allowing
-	 * us direct access to interrupt entry
-	 */
-	vtor[11] = (int)my_svc;
-	printk("vtor[11] == %p (my_svc == %p)\n", (void*)vtor[11], my_svc);
-
 	void *psplim;
 	__asm__ volatile("mrs %0, psplim" : "=r"(psplim));
 	printk("In main, PSPLIM = %p\n", psplim);
@@ -156,7 +132,35 @@ int main(void)
 	printk("back\n");
 
 	sum -= A + B + C + D + E;
-
-	printk("DONE!\n");
-	return 0;
 }
+
+/* Makes a copy of the vector table in writable RAM (it's generally in
+ * a ROM section), redirects it, and hooks the SVC interrupt with our
+ * own code above so we can catch direct interrupts.
+ */
+void *vector_hijack(void)
+{
+	static uint32_t __aligned(1024) vectors[256];
+	uint32_t *vtor_p = (void *)0xe000ed08;
+	uint32_t *vtor = (void *)*vtor_p;
+
+	/* Vector count: _vector_start/end set by the linker. */
+	int nv = (&_vector_end[0] - &_vector_start[0]) / sizeof(uint32_t);
+
+	printk("VTOR @%p\n", vtor);
+	for (int i = 0; i < nv; i++) {
+		vectors[i] = vtor[i];
+	}
+	*vtor_p = (uint32_t) &vectors[0];
+	vtor = (void *)*vtor_p;
+	printk("VTOR now @%p\n", vtor);
+
+	/* And hook the SVC call with our own function above, allowing
+	 * us direct access to interrupt entry
+	 */
+	vtor[11] = (int)my_svc;
+	printk("vtor[11] == %p (my_svc == %p)\n", (void*)vtor[11], my_svc);
+
+}
+
+ZTEST_SUITE(arm_m_switch, NULL, vector_hijack, NULL, NULL, NULL);

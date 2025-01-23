@@ -8,8 +8,6 @@
 #include <zephyr/kernel/thread.h>
 #include <zephyr/kernel/thread_stack.h>
 
-void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
-
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2);
 
@@ -17,9 +15,12 @@ bool arm_m_must_switch(uint32_t lr);
 
 void arm_m_exc_exit(void);
 
-extern uintptr_t z_arm_tls_ptr;
-
+/* Local declarations for symbols that lack headers or which can't be
+ * included here for header dependency reasons
+ */
 K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
+void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
+extern uintptr_t z_arm_tls_ptr;
 
 static inline void arm_m_exc_tail(void)
 {

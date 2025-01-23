@@ -286,9 +286,6 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	return &f->z.u.sw;
 }
 
-/* Constructs a new stack in the provided region (aligned to and in
- * units of 8 bytes per AAPCS) and returns the switch handle
- */
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2)
 {
@@ -337,9 +334,6 @@ bool arm_m_must_switch(uint32_t lr)
 
 	bool fpu = arm_m_fpu_state_pushed(lr);
 
-	/* Rejigger the frame we're pickling, and unpickle the new
-	 * thread we're returning into
-	 */
 	__asm__ volatile("mrs %0, psp" : "=r"(last));
 	last = arm_m_cpu_to_switch(last, fpu);
 	next = arm_m_switch_to_cpu(next);
