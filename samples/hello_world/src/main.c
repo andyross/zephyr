@@ -31,9 +31,9 @@ void my_fn(void *a, void *b, void *c)
 	__asm__ volatile("mrs %0, psplim" : "=r"(psplim));
 	printk("In my_fn, PSPLIM = %p\n", psplim);
 
-	__ASSERT_NO_MSG((int)a == 0);
-	__ASSERT_NO_MSG((int)b == 1);
-	__ASSERT_NO_MSG((int)c == 2);
+	zassert_equal((int)a, 0);
+	zassert_equal((int)b, 1);
+	zassert_equal((int)c, 2);
 
 	register int A = 11;
 	register int B = 12;
@@ -52,28 +52,29 @@ void my_fn(void *a, void *b, void *c)
 
 		arm_m_switch(main_sh, &my_sh);
 
-		__ASSERT_NO_MSG(A == 11);
-		__ASSERT_NO_MSG(B == 12);
-		__ASSERT_NO_MSG(C == 13);
-		__ASSERT_NO_MSG(D == 14);
-		__ASSERT_NO_MSG(E == 15);
+		zassert_equal(A, 11);
+		zassert_equal(B, 12);
+		zassert_equal(C, 13);
+		zassert_equal(D, 14);
+		zassert_equal(E, 15);
 	}
 }
 
+/* Nothing in particular to do here except exercise the interrupt exit hook */
 void my_svc(void)
 {
 	printk("%s:%d\n", __func__, __LINE__);
-
-	void *psp;
-	__asm__ volatile("mrs %0, psp" : "=r"(psp));
-
 	arm_m_exc_tail();
+
+	/* Validate that the tail hook doesn't need to be last */
+	printk("   arm_m_exc_tail() has been called\n");
 }
 
 //int main(void)
 ZTEST(arm_m_switch, smoke)
 {
 	void *psplim;
+
 	__asm__ volatile("mrs %0, psplim" : "=r"(psplim));
 	printk("In main, PSPLIM = %p\n", psplim);
 
@@ -90,6 +91,7 @@ ZTEST(arm_m_switch, smoke)
 #ifdef CONFIG_FPU_SHARING
 	/* Prime all the FPU registers with something I can recognize in a debugger */
 	uint32_t sregs[32];
+
 	for(int i = 0; i < 32; i++) {
 		sregs[i] = 0x3f800000 + i;
 	}
@@ -103,26 +105,27 @@ ZTEST(arm_m_switch, smoke)
 	__asm__ volatile("svc 0");
 	printk("...back\n");
 
-	__ASSERT_NO_MSG(A == 1);
-	__ASSERT_NO_MSG(B == 2);
-	__ASSERT_NO_MSG(C == 3);
-	__ASSERT_NO_MSG(D == 4);
-	__ASSERT_NO_MSG(E == 5);
+	zassert_equal(A, 1);
+	zassert_equal(B, 2);
+	zassert_equal(C, 3);
+	zassert_equal(D, 4);
+	zassert_equal(E, 5);
 
 	/* Now likewise switch to and from a foreign stack and check */
 	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn, (void*)0, (void*)1, (void*)2);
 
 	int cycles = 16;
+
 	for(int n = 0; n < cycles; n++) {
 		printk("main() switching to my_fn() (iter %d)...\n", n);
 		arm_m_switch(my_sh, &main_sh);
 		printk("...and back\n");
 
-		__ASSERT_NO_MSG(A == 1);
-		__ASSERT_NO_MSG(B == 2);
-		__ASSERT_NO_MSG(C == 3);
-		__ASSERT_NO_MSG(D == 4);
-		__ASSERT_NO_MSG(E == 5);
+		zassert_equal(A, 1);
+		zassert_equal(B, 2);
+		zassert_equal(C, 3);
+		zassert_equal(D, 4);
+		zassert_equal(E, 5);
 	}
 
 	/* Do it again, except via interrupt this time */
@@ -161,6 +164,7 @@ void *vector_hijack(void)
 	vtor[11] = (int)my_svc;
 	printk("vtor[11] == %p (my_svc == %p)\n", (void*)vtor[11], my_svc);
 
+	return NULL;
 }
 
 ZTEST_SUITE(arm_m_switch, NULL, vector_hijack, NULL, NULL, NULL);
