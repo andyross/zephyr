@@ -342,7 +342,7 @@ bool arm_m_must_switch(uint32_t lr)
 #if !defined(CONFIG_MULTITHREADING)
 	arm_m_last_switch_handle = last;
 #elif defined(CONFIG_USE_SWITCH)
-	arch_current_thread()->base.switch_handle = last;
+	_current->switch_handle = last;
 #endif
 
 	return true;

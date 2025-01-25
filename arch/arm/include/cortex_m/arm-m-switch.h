@@ -144,4 +144,11 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		  "r6", "r7", "r8", "r9", "r10", "r11");
 }
 
+#ifdef CONFIG_USE_SWITCH
+static ALWAYS_INLINE void arch_switch(void *switch_to, void **switched_from)
+{
+	arm_m_switch(switch_to, switched_from);
+}
+#endif
+
 #endif /* _ZEPHYR_ARCH_ARM_M_SWITCH_H */

@@ -62,8 +62,6 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 		     char *stack_ptr, k_thread_entry_t entry,
 		     void *p1, void *p2, void *p3)
 {
-	struct __basic_sf *iframe;
-
 #ifdef CONFIG_MPU_STACK_GUARD
 #if defined(CONFIG_USERSPACE)
 	if (z_stack_is_user_capable(stack)) {
@@ -87,16 +85,22 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 #endif /* FP_GUARD_EXTRA_SIZE */
 #endif /* CONFIG_MPU_STACK_GUARD */
 
-	iframe = Z_STACK_PTR_TO_FRAME(struct __basic_sf, stack_ptr);
+	void *entry_wrapper = z_thread_entry;
+
 #if defined(CONFIG_USERSPACE)
 	if ((thread->base.user_options & K_USER) != 0) {
-		iframe->pc = (uint32_t)arch_user_mode_enter;
-	} else {
-		iframe->pc = (uint32_t)z_thread_entry;
+		entry_wrapper = (uint32_t)arch_user_mode_enter;
 	}
-#else
-	iframe->pc = (uint32_t)z_thread_entry;
 #endif
+
+#ifdef CONFIG_USE_SWITCH
+	/* FIXME: handle p3 here! */
+	thread->switch_handle = arm_m_new_stack((char *)stack,
+						stack_ptr - (char *)stack,
+						entry_wrapper, entry, p1, p2);
+#else
+	struct __basic_sf *iframe = Z_STACK_PTR_TO_FRAME(struct __basic_sf, stack_ptr);
+	iframe->pc = (uint32_t)entry_wrapper;
 
 	/* force ARM mode by clearing LSB of address */
 	iframe->pc &= 0xfffffffe;
@@ -109,6 +113,8 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 		0x01000000UL; /* clear all, thumb bit is 1, even if RO */
 
 	thread->callee_saved.psp = (uint32_t)iframe;
+#endif
+
 	thread->arch.basepri = 0;
 
 #if defined(CONFIG_ARM_STORE_EXC_RETURN) || defined(CONFIG_USERSPACE)
