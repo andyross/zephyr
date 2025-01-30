@@ -429,7 +429,10 @@ _stack_frame_endif:
 #endif
 
 #ifdef CONFIG_USE_SWITCH
-    b =arm_m_legacy_exit
+    push {r0, lr}
+    bl =arm_m_legacy_exit
+    pop {r0, lr}
+    bx lr
 #else
     ldr r0, =z_arm_int_exit
     bx r0
