@@ -18,6 +18,9 @@
 
 #include <zephyr/sw_isr_table.h>
 #include <stdbool.h>
+#ifndef _ASMLANGUAGE
+#include <zephyr/arch/arm/arm-m-switch.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,7 +74,14 @@ void z_soc_irq_eoi(unsigned int irq);
 
 #endif /* !CONFIG_ARM_CUSTOM_INTERRUPT_CONTROLLER */
 
+#if defined(CONFIG_CPU_CORTEX_M) && defined(CONFIG_USE_SWITCH)
+static inline void z_arm_int_exit(void)
+{
+	arm_m_exc_tail();
+}
+#else
 extern void z_arm_int_exit(void);
+#endif
 
 extern void z_arm_interrupt_init(void);
 

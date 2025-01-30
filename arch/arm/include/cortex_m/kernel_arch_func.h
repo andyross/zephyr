@@ -21,13 +21,14 @@
 #define ZEPHYR_ARCH_ARM_INCLUDE_CORTEX_M_KERNEL_ARCH_FUNC_H_
 
 #include <zephyr/platform/hooks.h>
-#include <cortex_m/arm-m-switch.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #ifndef _ASMLANGUAGE
+#include <zephyr/arch/arm/arm-m-switch.h>
+
 extern void z_arm_fault_init(void);
 extern void z_arm_cpu_idle_init(void);
 #ifdef CONFIG_ARM_MPU

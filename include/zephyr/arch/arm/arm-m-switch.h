@@ -4,7 +4,11 @@
 #ifndef _ZEPHYR_ARCH_ARM_M_SWITCH_H
 #define _ZEPHYR_ARCH_ARM_M_SWITCH_H
 
+/* Need this to break a header cycle vs. zephyr/arch/arm/arch.h */
+#define ARCH_STACK_PTR_ALIGN 8
+
 #include <stdint.h>
+#include <zephyr/kernel_structs.h>
 #include <zephyr/kernel/thread.h>
 #include <zephyr/kernel/thread_stack.h>
 
@@ -16,11 +20,13 @@ bool arm_m_must_switch(uint32_t lr);
 void arm_m_exc_exit(void);
 
 /* Local declarations for symbols that lack headers or which can't be
- * included here for header dependency reasons
+ * included here for header dependency reasons.
  */
-K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
+//extern char z_interrupt_stacks[1][CONFIG_ISR_STACK_SIZE];
 void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
 extern uintptr_t z_arm_tls_ptr;
+
+K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
 
 static inline void arm_m_exc_tail(void)
 {

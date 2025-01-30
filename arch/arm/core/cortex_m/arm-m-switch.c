@@ -146,7 +146,7 @@ static bool arm_m_is_thread_return(uint32_t lr)
 }
 
 /* Returns true if the EXC_RETURN address indicates a FPU subframe was
- * pushed to the stack.  See ARMv6M manual B1.5.8.
+ * pushed to the stack.  See ARMv7M manual B1.5.8.
  */
 static bool arm_m_fpu_state_pushed(uint32_t lr)
 {
@@ -347,6 +347,19 @@ bool arm_m_must_switch(uint32_t lr)
 
 	return true;
 }
+
+/* This is an inline now, but there are a few spots that want to call
+ * the old entry point from assembly
+ */
+static __used void legacy_int_exit(void)
+{
+	arm_m_exc_tail();
+}
+__asm__(".globl z_arm_exc_exit;"
+	"z_arm_exc_exit:;"
+	".globl z_arm_int_exit;"
+	"z_arm_int_exit:;"
+	" b legacy_int_exit");
 
 /* We arrive here on "return" from exception handlers on a context
  * switch. Our job is to save the interrupted r4-r11 of the outgoing
