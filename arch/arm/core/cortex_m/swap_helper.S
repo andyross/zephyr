@@ -428,9 +428,12 @@ _stack_frame_endif:
     pop {r0, lr}
 #endif
 
-    /* exception return is done in z_arm_int_exit() */
+#ifdef CONFIG_USE_SWITCH
+    b =arm_m_legacy_exit
+#else
     ldr r0, =z_arm_int_exit
     bx r0
+#endif
 
 #endif
 

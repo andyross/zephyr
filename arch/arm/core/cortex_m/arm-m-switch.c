@@ -348,18 +348,13 @@ bool arm_m_must_switch(uint32_t lr)
 	return true;
 }
 
-/* This is an inline now, but there are a few spots that want to call
- * the old entry point from assembly
+/* This is handled an inline now for C code, but there are a few spots
+ * that want to call the old entry point from assembly
  */
-static __used void legacy_int_exit(void)
+void arm_m_legacy_exit(void)
 {
 	arm_m_exc_tail();
 }
-__asm__(".globl z_arm_exc_exit;"
-	"z_arm_exc_exit:;"
-	".globl z_arm_int_exit;"
-	"z_arm_int_exit:;"
-	" b legacy_int_exit");
 
 /* We arrive here on "return" from exception handlers on a context
  * switch. Our job is to save the interrupted r4-r11 of the outgoing
