@@ -326,6 +326,7 @@ bool arm_m_must_switch(uint32_t lr)
 		return false;
 	}
 
+	struct k_thread *last_thread = _current;
 	void *last, *next = z_get_next_switch_handle(NULL);
 
 	if (next == NULL) {
@@ -342,7 +343,7 @@ bool arm_m_must_switch(uint32_t lr)
 #if !defined(CONFIG_MULTITHREADING)
 	arm_m_last_switch_handle = last;
 #elif defined(CONFIG_USE_SWITCH)
-	_current->switch_handle = last;
+	last_thread->switch_handle = last;
 #endif
 
 	return true;
