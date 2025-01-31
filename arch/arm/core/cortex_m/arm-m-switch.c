@@ -346,6 +346,9 @@ bool arm_m_must_switch(uint32_t lr)
 	last_thread->switch_handle = last;
 #endif
 
+#ifdef CONFIG_THREAD_LOCAL_STORAGE
+	z_arm_tls_ptr = _current->tls;
+#endif
 	return true;
 }
 
