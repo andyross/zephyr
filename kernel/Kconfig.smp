@@ -14,6 +14,7 @@ config SMP
 config USE_SWITCH
 	bool "Use new-style _arch_switch instead of arch_swap"
 	depends on USE_SWITCH_SUPPORTED
+	default y if USE_SWITCH_SUPPORTED
 	help
 	  The _arch_switch() API is a lower level context switching
 	  primitive than the original arch_swap mechanism.  It is required

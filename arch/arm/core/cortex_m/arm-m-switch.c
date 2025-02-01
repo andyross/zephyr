@@ -322,11 +322,14 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 
 bool arm_m_must_switch(uint32_t lr)
 {
+#ifdef CONFIG_USE_SWITCH
+	struct k_thread *last_thread = _current;
+#endif
+
 	if (!arm_m_is_thread_return(lr)) {
 		return false;
 	}
 
-	struct k_thread *last_thread = _current;
 	void *last, *next = z_get_next_switch_handle(NULL);
 
 	if (next == NULL) {

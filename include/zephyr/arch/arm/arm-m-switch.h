@@ -51,9 +51,10 @@ static inline void arm_m_exc_tail(void)
 	 * call and return directly (reschedule is optional for direct
 	 * interrupts anyway).
 	 */
-	uint32_t *stack_top = (void *)(K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]) +
+	char *stack = (char *)K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]);
+	uint32_t *s_top = (uint32_t *)(stack +
 				       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
-	uint32_t *lr_ptr = &stack_top[-1];
+	uint32_t *lr_ptr = &s_top[-1];
 
 	if (arm_m_must_switch(*lr_ptr)) {
 		*lr_ptr = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
