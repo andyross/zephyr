@@ -89,7 +89,7 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 
 #if defined(CONFIG_USERSPACE)
 	if ((thread->base.user_options & K_USER) != 0) {
-		entry_wrapper = (uint32_t)arch_user_mode_enter;
+		entry_wrapper = (void *)arch_user_mode_enter;
 	}
 #endif
 

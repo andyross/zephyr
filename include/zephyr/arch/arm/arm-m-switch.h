@@ -30,6 +30,10 @@ K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_
 
 static inline void arm_m_exc_tail(void)
 {
+	if (!IS_ENABLED(CONFIG_MULTITHREADING)) {
+		return;
+	}
+
 	/* Dirty trickery: we load this ISR's LR register (which
 	 * contains our interrupt return token) from the runtime stack
 	 * frame pushed to the top of the interrupt stack on entry.

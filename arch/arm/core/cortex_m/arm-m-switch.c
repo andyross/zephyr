@@ -216,7 +216,7 @@ static void fpu_cs_copy(struct hw_frame_fpu *src, struct z_frame_fpu *dst)
  */
 static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 {
-	union frame *f;
+	union frame *f = NULL;
 	struct hw_frame_base *base = sp;
 	bool padded = (base->apsr & 0x200);
 	uint32_t fpscr;
@@ -322,7 +322,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 
 bool arm_m_must_switch(uint32_t lr)
 {
-#ifdef CONFIG_USE_SWITCH
+#if defined(CONFIG_USE_SWITCH) && defined(CONFIG_MULTITHREADING)
 	struct k_thread *last_thread = _current;
 #endif
 

@@ -18,7 +18,7 @@
 
 #include <zephyr/sw_isr_table.h>
 #include <stdbool.h>
-#ifndef _ASMLANGUAGE
+#if !defined(_ASMLANGUAGE) && defined(CONFIG_CPU_CORTEX_M)
 #include <zephyr/arch/arm/arm-m-switch.h>
 #endif
 
