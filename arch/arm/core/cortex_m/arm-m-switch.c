@@ -109,6 +109,16 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
  */
 struct { void *out, *in; } arm_m_cs_ptrs;
 
+#ifdef CONFIG_LTO
+/* Toolchain workaround: when building with LTO, gcc seems unable to
+ * notice the reference to arm_m_cs_ptrs in the assembly for
+ * arm_m_exc_exit below, and drops the symbol before the final link.
+ * Use this global to store a pointer in arm_m_new_stack(), wasting a
+ * few bytes of code & data.
+ */
+void *arm_m_lto_dummy;
+#endif
+
 /* Unit test hook, unused in production */
 void *arm_m_last_switch_handle;
 
@@ -291,6 +301,10 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 {
 	struct switch_frame *sw;
 	uint32_t baddr;
+
+#ifdef CONFIG_LTO
+	arm_m_lto_dummy = &arm_m_cs_ptrs;
+#endif
 
 	baddr = ((uint32_t)base + 7) & ~7;
 	sz = ((uint32_t)(base + sz) - baddr) & ~7;
