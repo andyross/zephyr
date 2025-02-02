@@ -13,7 +13,7 @@
 #include <zephyr/kernel/thread_stack.h>
 
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
-		      void *arg0, void *arg1, void *arg2);
+		      void *arg0, void *arg1, void *arg2, void *arg3);
 
 bool arm_m_must_switch(uint32_t lr);
 

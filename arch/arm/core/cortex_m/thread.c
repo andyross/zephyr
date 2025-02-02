@@ -97,7 +97,7 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	/* FIXME: handle p3 here! */
 	thread->switch_handle = arm_m_new_stack((char *)stack,
 						stack_ptr - (char *)stack,
-						entry_wrapper, entry, p1, p2);
+						entry_wrapper, entry, p1, p2, p3);
 #else
 	struct __basic_sf *iframe = Z_STACK_PTR_TO_FRAME(struct __basic_sf, stack_ptr);
 	iframe->pc = (uint32_t)entry_wrapper;

@@ -287,7 +287,7 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 }
 
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
-		      void *arg0, void *arg1, void *arg2)
+		      void *arg0, void *arg1, void *arg2, void *arg3)
 {
 	struct switch_frame *sw;
 	uint32_t baddr;
@@ -310,6 +310,7 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		.r0 = (uint32_t) arg0,
 		.r1 = (uint32_t) arg1,
 		.r2 = (uint32_t) arg2,
+		.r3 = (uint32_t) arg3,
 		.pc = ((uint32_t) entry) | 1, /* set thumb bit! */
 		.apsr = 0x1000000,            /* thumb bit here too! */
 	};
@@ -356,7 +357,8 @@ bool arm_m_must_switch(uint32_t lr)
 }
 
 /* This is handled an inline now for C code, but there are a few spots
- * that want to call the old entry point from assembly
+ * that need to get to it from assembly (but which IMHO should really
+ * be ported to C)
  */
 void arm_m_legacy_exit(void)
 {
