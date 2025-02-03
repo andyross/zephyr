@@ -4,13 +4,9 @@
 #ifndef _ZEPHYR_ARCH_ARM_M_SWITCH_H
 #define _ZEPHYR_ARCH_ARM_M_SWITCH_H
 
-/* Need this to break a header cycle vs. zephyr/arch/arm/arch.h */
-#define ARCH_STACK_PTR_ALIGN 8
-
 #include <stdint.h>
 #include <zephyr/kernel_structs.h>
 #include <zephyr/kernel/thread.h>
-#include <zephyr/kernel/thread_stack.h>
 
 void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 		      void *arg0, void *arg1, void *arg2, void *arg3);
@@ -19,14 +15,11 @@ bool arm_m_must_switch(uint32_t lr);
 
 void arm_m_exc_exit(void);
 
-/* Local declarations for symbols that lack headers or which can't be
- * included here for header dependency reasons.
- */
-//extern char z_interrupt_stacks[1][CONFIG_ISR_STACK_SIZE];
-void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
-extern uintptr_t z_arm_tls_ptr;
+extern uint32_t *arm_m_exc_lr_ptr;
 
-K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS, CONFIG_ISR_STACK_SIZE);
+void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
+
+extern uintptr_t z_arm_tls_ptr;
 
 static inline void arm_m_exc_tail(void)
 {
@@ -54,14 +47,16 @@ static inline void arm_m_exc_tail(void)
 	 * and can't meet these requirents, it can always skip this
 	 * call and return directly (reschedule is optional for direct
 	 * interrupts anyway).
+	 *
+	 * Note the use of the global variable requires an extra load
+	 * vs. computing the stack location directly here at compile
+	 * time.  The header tangle required to get the interrupt
+	 * stack exposed this early wasn't something I could solve.
+	 * Nonetheless there are two cycles on the table here for
+	 * someone enterprising.
 	 */
-	char *stack = (char *)K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]);
-	uint32_t *s_top = (uint32_t *)(stack +
-				       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
-	uint32_t *lr_ptr = &s_top[-1];
-
-	if (arm_m_must_switch(*lr_ptr)) {
-		*lr_ptr = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
+	if (arm_m_must_switch(*arm_m_exc_lr_ptr)) {
+		*arm_m_exc_lr_ptr = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
 	}
 }
 

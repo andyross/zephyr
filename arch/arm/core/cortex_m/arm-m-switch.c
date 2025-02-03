@@ -122,6 +122,9 @@ void *arm_m_lto_dummy;
 /* Unit test hook, unused in production */
 void *arm_m_last_switch_handle;
 
+/* Global holder for the location of the saved LR in the entry frame. */
+uint32_t *arm_m_exc_lr_ptr;
+
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
 #define HW_TO_SWITCH(hw, sw) do {					\
 	uint32_t r0 = hw.r0, r1 = hw.r1, r2 = hw.r2, r3 = hw.r3; 	\
@@ -305,6 +308,17 @@ void *arm_m_new_stack(char *base, uint32_t sz, void *entry,
 #ifdef CONFIG_LTO
 	arm_m_lto_dummy = &arm_m_cs_ptrs;
 #endif
+
+	/* Kludgey global initialization, put a computed pointer to
+	 * the LR frame location into this variable for use by
+	 * arm_m_exc_tail().  Should move to arch init somewhere once
+	 * arch_switch is better integrated
+	 */
+	char *stack = (char *)K_KERNEL_STACK_BUFFER(z_interrupt_stacks[0]);
+	uint32_t *s_top = (uint32_t *)(stack +
+				       K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[0]));
+
+	arm_m_exc_lr_ptr = &s_top[-1];
 
 	baddr = ((uint32_t)base + 7) & ~7;
 	sz = ((uint32_t)(base + sz) - baddr) & ~7;
