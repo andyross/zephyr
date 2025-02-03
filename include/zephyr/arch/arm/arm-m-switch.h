@@ -48,12 +48,21 @@ static inline void arm_m_exc_tail(void)
 	 * call and return directly (reschedule is optional for direct
 	 * interrupts anyway).
 	 *
-	 * Note the use of the global variable requires an extra load
-	 * vs. computing the stack location directly here at compile
-	 * time.  The header tangle required to get the interrupt
-	 * stack exposed this early wasn't something I could solve.
-	 * Nonetheless there are two cycles on the table here for
-	 * someone enterprising.
+	 * Note that this needlessly duplicates work in the case of
+	 * nested interrupts, which will inspect scheduler state at
+	 * each exception layer as it returns.  Really we want to
+	 * defer this to the last one, but that requires an entry
+	 * hook.  Unlikely to be a serious problem in practice as apps
+	 * need to be prepared, performance-wise, for nested
+	 * interrupts to arrive sequentially, so optimizing for the
+	 * former doesn't help worst-case latency.
+	 *
+	 * Note also that the use of the global variable requires an
+	 * extra load vs. computing the stack location directly here
+	 * at compile time.  The header tangle required to get the
+	 * interrupt stack exposed this early wasn't something I could
+	 * solve.  Nonetheless there are two cycles on the table here
+	 * for someone enterprising.
 	 */
 	if (arm_m_must_switch(*arm_m_exc_lr_ptr)) {
 		*arm_m_exc_lr_ptr = 1 | (uint32_t)arm_m_exc_exit; /* thumb bit! */
@@ -65,8 +74,25 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 #if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD)
 	z_arm_configure_dynamic_mpu_regions(_current);
 #endif
+
 #ifdef CONFIG_THREAD_LOCAL_STORAGE
 	z_arm_tls_ptr = _current->tls;
+#endif
+
+#if defined(CONFIG_USERSPACE) && defined(CONFIG_USE_SWITCH)
+	/* Need to manage CONTROL.nPRIV bit.  We know the outgoing
+	 * thread is in privileged mode (because you can't reach a
+	 * context switch unless you're in the kernel!).
+	 */
+	extern uint32_t arm_m_switch_control;
+	uint32_t control;
+        struct k_thread *old = CONTAINER_OF(switched_from, struct k_thread,
+                                            switch_handle);
+
+	old->arch.mode &= ~1;
+	__asm__ volatile("mrs %0, control" : "=r"(control));
+	__ASSERT_NO_MSG((control & 1) == 0);
+	arm_m_switch_control = (control & ~1) | (_current->arch.mode & 1);
 #endif
 
 	/* new switch handle in r4, old switch handle pointer in r5.
@@ -121,6 +147,13 @@ static ALWAYS_INLINE void arm_m_switch(void *switch_to, void **switched_from)
 		 "   vmsr fpscr, r6;"
 		 "2:;"
 #endif
+
+#if defined(CONFIG_USERSPACE) && defined(CONFIG_USE_SWITCH)
+		 "  ldr r8, =arm_m_switch_control;"
+		 "  ldr r8, [r8];"
+		 "  msr control, r8;"
+#endif
+
 		 /* Save the outgoing switch handle (which is SP), swap stacks,
 		  * and enable interrupts.  The restore process is
 		  * interruptible code (running in the incoming thread) once

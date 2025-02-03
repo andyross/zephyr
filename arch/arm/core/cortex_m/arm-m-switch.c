@@ -125,6 +125,9 @@ void *arm_m_last_switch_handle;
 /* Global holder for the location of the saved LR in the entry frame. */
 uint32_t *arm_m_exc_lr_ptr;
 
+/* Dummy used in arch_switch() when USERSPACE=y */
+uint32_t arm_m_switch_control;
+
 /* Emits an in-place copy from a hw_frame_base to a switch_frame */
 #define HW_TO_SWITCH(hw, sw) do {					\
 	uint32_t r0 = hw.r0, r1 = hw.r1, r2 = hw.r2, r3 = hw.r3; 	\
@@ -376,6 +379,22 @@ bool arm_m_must_switch(uint32_t lr)
 	arm_m_last_switch_handle = last;
 #elif defined(CONFIG_USE_SWITCH)
 	last_thread->switch_handle = last;
+#endif
+
+#ifdef CONFIG_USERSPACE
+	uint32_t control, c0;
+
+	__asm__ volatile("mrs %0, control" : "=r"(control));
+	c0 = control; //DEBUG
+	last_thread->arch.mode &= (~1) | (control & 1);
+	control &= (~1) | (_current->arch.mode & 1);
+	__asm__ volatile("msr control, %0" :: "r"(control));
+
+	printk("EXC thread %p (contol 0x%x) -> %p (%x)\n", last_thread, c0, _current, control);
+#endif
+
+#if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD)
+	z_arm_configure_dynamic_mpu_regions(_current);
 #endif
 
 #ifdef CONFIG_THREAD_LOCAL_STORAGE
