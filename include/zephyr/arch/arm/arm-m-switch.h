@@ -21,6 +21,8 @@ void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
 
 extern uintptr_t z_arm_tls_ptr;
 
+extern uint32_t arm_m_switch_stack_buffer;
+
 static inline void arm_m_exc_tail(void)
 {
 	if (!IS_ENABLED(CONFIG_MULTITHREADING)) {

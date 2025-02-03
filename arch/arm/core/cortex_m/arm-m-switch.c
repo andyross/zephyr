@@ -103,6 +103,14 @@ BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(hwfp_a));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(z));
 BUILD_ASSERT(FRAME_FIELD_END(hw) == FRAME_FIELD_END(zfp));
 
+#ifdef CONFIG_FPU_SHARING
+uint32_t arm_m_switch_stack_buffer =
+	sizeof(struct z_frame_fpu) - sizeof(struct hw_frame_base);
+#else
+uint32_t arm_m_switch_stack_buffer =
+	sizeof(struct z_frame) - sizeof(struct hw_frame_base);
+#endif
+
 /* Global pointers to the frame locations for the callee-saved
  * registers.  Set in arm_m_must_switch(), and used by the fixup
  * assembly in arm_m_exc_exit.

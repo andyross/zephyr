@@ -382,7 +382,7 @@ void configure_builtin_stack_guard(struct k_thread *thread)
  * @return The lowest allowed stack frame pointer, if error is a
  *         thread stack corruption, otherwise return 0.
  */
-uint32_t z_check_thread_stack_fail(const uint32_t fault_addr, const uint32_t psp)
+static uint32_t min_stack(const uint32_t fault_addr, const uint32_t psp)
 {
 #if defined(CONFIG_MULTITHREADING)
 	const struct k_thread *thread = _current;
@@ -453,6 +453,17 @@ uint32_t z_check_thread_stack_fail(const uint32_t fault_addr, const uint32_t psp
 
 	return 0;
 }
+
+uint32_t z_check_thread_stack_fail(const uint32_t fault_addr, const uint32_t psp)
+{
+	uint32_t sp = min_stack(fault_addr, psp);
+
+	if (IS_ENABLED(CONFIG_USE_SWITCH)) {
+		sp += arm_m_switch_stack_buffer;
+	}
+	return sp;
+}
+
 #endif /* CONFIG_MPU_STACK_GUARD || CONFIG_USERSPACE */
 
 #if defined(CONFIG_FPU) && defined(CONFIG_FPU_SHARING)
