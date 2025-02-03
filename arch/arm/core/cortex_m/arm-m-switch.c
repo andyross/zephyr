@@ -390,15 +390,12 @@ bool arm_m_must_switch(uint32_t lr)
 #endif
 
 #ifdef CONFIG_USERSPACE
-	uint32_t control, c0;
+	uint32_t control;
 
 	__asm__ volatile("mrs %0, control" : "=r"(control));
-	c0 = control; //DEBUG
 	last_thread->arch.mode &= (~1) | (control & 1);
 	control &= (~1) | (_current->arch.mode & 1);
 	__asm__ volatile("msr control, %0" :: "r"(control));
-
-	printk("EXC thread %p (contol 0x%x) -> %p (%x)\n", last_thread, c0, _current, control);
 #endif
 
 #if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD)
