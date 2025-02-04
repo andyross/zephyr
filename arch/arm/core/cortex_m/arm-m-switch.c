@@ -394,7 +394,7 @@ bool arm_m_must_switch(uint32_t lr)
 
 	__asm__ volatile("mrs %0, control" : "=r"(control));
 	last_thread->arch.mode &= (~1) | (control & 1);
-	control &= (~1) | (_current->arch.mode & 1);
+	control = (control & ~1) | (_current->arch.mode & 1);
 	__asm__ volatile("msr control, %0" :: "r"(control));
 #endif
 
