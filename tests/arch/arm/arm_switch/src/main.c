@@ -23,7 +23,7 @@ void *z_get_next_switch_handle(void *interrupted)
 }
 
 
-void my_fn(void *a, void *b, void *c)
+void my_fn(void *a, void *b, void *c, void *d)
 {
 	printk("%s:%d\n", __func__, __LINE__);
 
@@ -70,8 +70,7 @@ void my_svc(void)
 	printk("   arm_m_exc_tail() has been called\n");
 }
 
-//int main(void)
-ZTEST(arm_m_switch, smoke)
+ZTEST(arm_m_switch, test_smoke)
 {
 	void *psplim;
 
@@ -112,7 +111,8 @@ ZTEST(arm_m_switch, smoke)
 	zassert_equal(E, 5);
 
 	/* Now likewise switch to and from a foreign stack and check */
-	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn, (void*)0, (void*)1, (void*)2);
+	my_sh = arm_m_new_stack(stack, sizeof(stack), my_fn,
+				(void*)0, (void*)1, (void*)2, NULL);
 
 	int cycles = 16;
 

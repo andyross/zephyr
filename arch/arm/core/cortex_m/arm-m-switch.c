@@ -246,7 +246,7 @@ static void *arm_m_cpu_to_switch(void *sp, bool fpu)
 	uint32_t fpscr;
 
 	if (fpu && IS_ENABLED(CONFIG_FPU_SHARING)) {
-		uint32_t dummy;
+		uint32_t dummy = 0;
 
 		/* Lazy FPU stacking is enabled, so before we touch
 		 * the stack frame we have to tickle the FPU to force
