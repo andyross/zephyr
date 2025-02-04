@@ -451,7 +451,11 @@ static uint32_t min_stack(const uint32_t fault_addr, const uint32_t psp)
 #endif
 #endif /* CONFIG_USERSPACE */
 
-	return 0;
+	/* New style arch_switch() prefers an unadulterated stack
+	 * pointer on oops'd threads as it avoids having a test on the
+	 * exception return hot path.
+	 */
+	return IS_ENABLED(CONFIG_USE_SWITCH) ? psp : 0;
 }
 
 uint32_t z_check_thread_stack_fail(const uint32_t fault_addr, const uint32_t psp)
