@@ -45,6 +45,7 @@ SECTIONS {
   .data : {
     __data_start = .;
     *(.data .data.*)
+    *(.clib.data) /* xt-clang runtime stuff */
     _trace_ctx_start = ABSOLUTE(.);
     *(.trace_ctx)
     _trace_ctx_end = ABSOLUTE(.);
@@ -57,6 +58,7 @@ SECTIONS {
     *(.bss .bss.*)
     *(.gnu.linkonce.b.*)
     *(COMMON)
+    *(.clib.bss .clib.percpu.bss) /* xt-clang runtime stuff */
     _bss_end = .;
   } > sram
 
