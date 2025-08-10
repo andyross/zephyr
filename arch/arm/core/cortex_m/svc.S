@@ -261,10 +261,12 @@ SECTION_FUNC(TEXT, z_arm_svc)
     msr PSPLIM, r1
 #endif /* CONFIG_BUILTIN_STACK_GUARD */
 
-#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
-// ANDY: lock here at end of SVC call
+    /* Take lock before returning from svc */
+#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
     mov r0, #_EXC_IRQ_DEFAULT_PRIO
     msr BASEPRI, r0
+#else
+    cpsid i
 #endif
 
     /* return from SVC to the modified LR - z_arm_do_syscall */

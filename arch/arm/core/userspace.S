@@ -57,6 +57,8 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
     /* move user_entry to lr */
     mov lr, r0
 
+    LOCK(r0)
+
     /* prepare to set stack to privilege */
     ldr r0, =_kernel
     ldr r0, [r0, #_kernel_offset_to_current]
