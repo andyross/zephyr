@@ -26,6 +26,8 @@ GTEXT(arch_user_string_nlen)
 GTEXT(z_arm_user_string_nlen_fault_start)
 GTEXT(z_arm_user_string_nlen_fault_end)
 GTEXT(z_arm_user_string_nlen_fixup)
+GTEXT(z_syscall_exit_race1)
+GTEXT(z_syscall_exit_race2)
 GDATA(_kernel)
 
 /* Imports */
@@ -46,6 +48,12 @@ GDATA(_k_syscall_table)
 SECTION_FUNC(TEXT,z_arm_userspace_enter)
     /* move user_entry to lr */
     mov lr, r0
+
+#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
+    // ANDY lock kernel/thread data
+    mov r0, #_EXC_IRQ_DEFAULT_PRIO
+    msr basepri, r0
+#endif
 
     /* prepare to set stack to privileged stack */
     ldr r0, =_kernel
@@ -213,14 +221,7 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
      * large enough to accommodate a maximum exception stack frame.
      */
 
-    /* Temporarily store current IRQ locking status in ip */
-    mrs ip, BASEPRI
     push {r0, ip}
-
-    /* Lock PendSV while reprogramming PSP and PSPLIM */
-    mov r0, #_EXC_PENDSV_PRIO_MASK
-    msr BASEPRI_MAX, r0
-    isb
 
     /* Set PSPLIM to guard the thread's user stack. */
     ldr r0, =_kernel
@@ -235,10 +236,10 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
     msr PSP, r0
 #endif
 
-#if defined(CONFIG_BUILTIN_STACK_GUARD)
-    /* Restore interrupt lock status */
-    msr BASEPRI, ip
-    isb
+#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
+    // ANDY lock kernel/thread data
+    mov r0, #0
+    msr basepri, r0
 #endif
 
     /* restore r0 */
@@ -314,6 +315,13 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
  *
  */
 SECTION_FUNC(TEXT, z_arm_do_syscall)
+
+#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
+// ANDY: lock here out of paranoia, should already be locked
+    mov ip, #_EXC_IRQ_DEFAULT_PRIO
+    msr BASEPRI, ip
+    isb
+#endif
 
     /* Note [when using MPU-based stack guarding]:
      * The function is executing in privileged mode. This implies that we
@@ -392,6 +400,12 @@ SECTION_FUNC(TEXT, z_arm_do_syscall)
     ldr ip, [ip, #_kernel_offset_to_current]
     ldr ip, [ip, #_thread_offset_to_priv_stack_start]    /* priv stack ptr */
     msr PSPLIM, ip
+#endif
+
+#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
+// ANDY: unlock here, we're on priv stack with CONTROL and mode synchronized
+    mov ip, #0
+    msr BASEPRI, ip
 #endif
 
     /*
@@ -478,6 +492,12 @@ dispatch_syscall:
     ldr lr, [sp,#16]
 #endif
 
+#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
+// ANDY: lock again while we muck with kernel/thread state and CONTROL
+    mov ip, #_EXC_IRQ_DEFAULT_PRIO
+    msr BASEPRI, ip
+    isb
+#endif
 
 #if defined(CONFIG_BUILTIN_STACK_GUARD)
     /*
@@ -496,14 +516,6 @@ dispatch_syscall:
      * left un-guarded; this is safe, as long as the privileged stack is
      * large enough to accommodate a maximum exception stack frame.
      */
-
-    /* Temporarily store current IRQ locking status in r2 */
-    mrs r2, BASEPRI
-
-    /* Lock PendSV while reprogramming PSP and PSPLIM */
-    mov r3, #_EXC_PENDSV_PRIO_MASK
-    msr BASEPRI_MAX, r3
-    isb
 
     /* Set PSPLIM to guard the thread's user stack. */
     ldr r3, =_kernel
@@ -527,12 +539,6 @@ dispatch_syscall:
     msr PSP, ip
 #endif
 
-#if defined(CONFIG_BUILTIN_STACK_GUARD)
-    /* Restore interrupt lock status */
-    msr BASEPRI, r2
-    isb
-#endif
-
     push {r0, r1}
 #if defined(CONFIG_ARMV6_M_ARMV8_M_BASELINE)
     push {r2, r3}
@@ -548,6 +554,7 @@ dispatch_syscall:
     /* drop privileges by setting bit 0 in CONTROL */
     mrs r2, CONTROL
     orrs r2, r2, r3
+
     msr CONTROL, r2
     pop {r2, r3}
 #elif defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE) \
@@ -559,12 +566,17 @@ dispatch_syscall:
     /* Store (unprivileged) mode in thread's mode state variable */
     str r1, [r0, #_thread_offset_to_mode]
     dsb
-#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
+
     /* drop privileges by setting bit 0 in CONTROL */
     mrs ip, CONTROL
     orrs ip, ip, #1
+
+    // ANDY: drop lock immediately before setting CONTROL
+    mov r0, #0
+    msr BASEPRI, r0
+z_syscall_exit_race1: /* See comment in arm-m-switch.c */
     msr CONTROL, ip
-#endif
+z_syscall_exit_race2:
 #endif
 
     /* ISB is not strictly necessary here (stack pointer is not being
