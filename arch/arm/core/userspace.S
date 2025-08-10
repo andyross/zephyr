@@ -33,6 +33,14 @@ GDATA(_kernel)
 /* Imports */
 GDATA(_k_syscall_table)
 
+#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
+# define LOCK(reg)   mov reg, #_EXC_IRQ_DEFAULT_PRIO ; msr BASEPRI, reg
+# define UNLOCK(reg) mov reg, #0 ; msr BASEPRI, reg
+#else
+# define LOCK(unused)   cpsid i
+# define UNLOCK(unused) cpsie i
+#endif
+
 /**
  *
  * User space entry function
@@ -49,13 +57,7 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
     /* move user_entry to lr */
     mov lr, r0
 
-#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
-    // ANDY lock kernel/thread data
-    mov r0, #_EXC_IRQ_DEFAULT_PRIO
-    msr basepri, r0
-#endif
-
-    /* prepare to set stack to privileged stack */
+    /* prepare to set stack to privilege */
     ldr r0, =_kernel
     ldr r0, [r0, #_kernel_offset_to_current]
 #if defined(CONFIG_ARMV6_M_ARMV8_M_BASELINE)
@@ -236,11 +238,7 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
     msr PSP, r0
 #endif
 
-#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
-    // ANDY lock kernel/thread data
-    mov r0, #0
-    msr basepri, r0
-#endif
+    UNLOCK(r0)
 
     /* restore r0 */
     mov r0, lr
@@ -315,13 +313,6 @@ SECTION_FUNC(TEXT,z_arm_userspace_enter)
  *
  */
 SECTION_FUNC(TEXT, z_arm_do_syscall)
-
-#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
-// ANDY: lock here out of paranoia, should already be locked
-    mov ip, #_EXC_IRQ_DEFAULT_PRIO
-    msr BASEPRI, ip
-    isb
-#endif
 
     /* Note [when using MPU-based stack guarding]:
      * The function is executing in privileged mode. This implies that we
@@ -402,11 +393,7 @@ SECTION_FUNC(TEXT, z_arm_do_syscall)
     msr PSPLIM, ip
 #endif
 
-#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
-// ANDY: unlock here, we're on priv stack with CONTROL and mode synchronized
-    mov ip, #0
-    msr BASEPRI, ip
-#endif
+    UNLOCK(ip)
 
     /*
      * r0-r5 contain arguments
@@ -492,12 +479,7 @@ dispatch_syscall:
     ldr lr, [sp,#16]
 #endif
 
-#ifdef CONFIG_ARMV7_M_ARMV8_M_MAINLINE
-// ANDY: lock again while we muck with kernel/thread state and CONTROL
-    mov ip, #_EXC_IRQ_DEFAULT_PRIO
-    msr BASEPRI, ip
-    isb
-#endif
+    LOCK(ip)
 
 #if defined(CONFIG_BUILTIN_STACK_GUARD)
     /*
@@ -567,16 +549,19 @@ dispatch_syscall:
     str r1, [r0, #_thread_offset_to_mode]
     dsb
 
+#if defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
     /* drop privileges by setting bit 0 in CONTROL */
     mrs ip, CONTROL
     orrs ip, ip, #1
 
-    // ANDY: drop lock immediately before setting CONTROL
-    mov r0, #0
-    msr BASEPRI, r0
-z_syscall_exit_race1: /* See comment in arm-m-switch.c */
+    /* drop lock immediately before setting CONTROL, see comments in arm-m-switch.c */
+    UNLOCK(r0)
+z_syscall_exit_race1:
     msr CONTROL, ip
 z_syscall_exit_race2:
+#else
+    UNLOCK(r0)
+#endif
 #endif
 
     /* ISB is not strictly necessary here (stack pointer is not being
